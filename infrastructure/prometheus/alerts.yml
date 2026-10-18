@@ -1,0 +1,68 @@
+groups:
+  - name: hotel_premium_sre_alerts
+    rules:
+      # 1. Microservice Availability Alert
+      - alert: HotelMicroserviceDown
+        expr: up{job="hotel-microservices"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          tier: application
+        annotations:
+          summary: "Microservice instance {{ $labels.instance }} is down"
+          description: "Microservice {{ $labels.instance }} has been unreachable for more than 30 seconds."
+
+      # 2. Kong Gateway Service Down
+      - alert: KongGatewayDown
+        expr: up{job="kong-gateway"} == 0
+        for: 30s
+        labels:
+          severity: page
+          tier: gateway
+        annotations:
+          summary: "Kong API Gateway ingress is unreachable"
+          description: "Kong API Gateway on {{ $labels.instance }} is down."
+
+      # 3. Apache Kafka 7.8.0 Consumer Lag Alert
+      - alert: KafkaHighConsumerLag
+        expr: sum(kafka_consumergroup_lag{topic=~"hotel.*"}) by (consumergroup, topic) > 50
+        for: 1m
+        labels:
+          severity: warning
+          tier: messaging
+        annotations:
+          summary: "High Kafka consumer lag on group {{ $labels.consumergroup }}"
+          description: "Kafka consumer group {{ $labels.consumergroup }} has lag > 50 messages on topic {{ $labels.topic }}."
+
+      # 4. HashiCorp Vault Availability Alert
+      - alert: VaultInstanceDown
+        expr: up{job="vault"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          tier: security
+        annotations:
+          summary: "HashiCorp Vault instance is unreachable"
+          description: "HashiCorp Vault on {{ $labels.instance }} is down or sealed."
+
+      # 5. Kong Upstream Circuit Breaker / Health Alert
+      - alert: KongUpstreamTargetUnhealthy
+        expr: kong_upstream_target_health{state="unhealthy"} > 0
+        for: 15s
+        labels:
+          severity: warning
+          tier: gateway
+        annotations:
+          summary: "Kong upstream target {{ $labels.target }} is UNHEALTHY"
+          description: "Kong circuit breaker marked target {{ $labels.target }} in upstream {{ $labels.upstream }} as unhealthy."
+
+      # 6. Database Connection Saturation Alert
+      - alert: PostgresConnectionSaturation
+        expr: (sum(pg_stat_database_numbackends) / 100) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          tier: database
+        annotations:
+          summary: "PostgreSQL active connections exceeding 80% capacity"
+          description: "PostgreSQL active backend connections are nearing pool limits."
