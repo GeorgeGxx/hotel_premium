@@ -44,9 +44,19 @@ func main() {
 		}()
 	}
 
+	// Emit initial startup span so the service is immediately discovered by Tempo
+	if telemetry.Tracer != nil {
+		_, startupSpan := telemetry.Tracer.Start(ctx, "NotificationWorkerStartup")
+		startupSpan.End()
+	}
+
 	// 2. Metrics & Health Endpoint for Prometheus & Observability Mesh
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
+		if telemetry.Tracer != nil {
+			_, span := telemetry.Tracer.Start(r.Context(), "NotificationWorkerHealth")
+			defer span.End()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "UP",
@@ -66,6 +76,23 @@ func main() {
 	go func() {
 		slog.Info("Notification Worker metrics & health listening", "port", port)
 		_ = server.ListenAndServe()
+	}()
+
+	// Periodic trace heartbeat to keep notification-worker active in Tempo & Grafana
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if telemetry.Tracer != nil {
+					_, span := telemetry.Tracer.Start(ctx, "NotificationWorkerHeartbeat")
+					span.End()
+				}
+			}
+		}
 	}()
 
 	// 3. Kafka Consumer Setup

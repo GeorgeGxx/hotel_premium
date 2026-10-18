@@ -43,7 +43,7 @@ func InitTracer(ctx context.Context, serviceName, collectorURL string) (func(con
 	}
 
 	bsp := sdktrace.NewBatchSpanProcessor(exporter,
-		sdktrace.WithBatchTimeout(5*time.Second),
+		sdktrace.WithBatchTimeout(1*time.Second),
 		sdktrace.WithMaxExportBatchSize(512),
 	)
 
