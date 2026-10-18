@@ -12,6 +12,8 @@ datasources:
       exemplarTraceIdDestinations:
         - name: trace_id
           datasourceUid: tempo
+        - name: traceparent
+          datasourceUid: tempo
 
   - name: Loki
     type: loki
@@ -19,10 +21,15 @@ datasources:
     access: proxy
     url: http://loki:3100
     jsonData:
+      maxLines: 2000
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: "trace_id=([a-f0-9]+)"
+          matcherRegex: '(?:trace_id|traceId)=([a-f0-9]+)'
           name: TraceID
+          url: "$${__value.raw}"
+        - datasourceUid: tempo
+          matcherRegex: '00-([a-f0-9]{32})-[a-f0-9]{16}-[a-f0-9]{2}'
+          name: W3CTraceID
           url: "$${__value.raw}"
 
   - name: Tempo
@@ -38,7 +45,25 @@ datasources:
         spanEndTimeShift: "2m"
         filterByTraceID: true
         filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service_name
+          - key: job
+            value: job
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-2m"
+        spanEndTimeShift: "2m"
+        queries:
+          - name: "Span Rate"
+            query: 'sum(rate(traces_spanmetrics_calls_total{service_name=$$__service_name}[1m]))'
+          - name: "Latency P95"
+            query: 'histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service_name=$$__service_name}[1m])) by (le))'
       serviceMap:
         datasourceUid: prometheus
       nodeGraph:
         enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: loki
