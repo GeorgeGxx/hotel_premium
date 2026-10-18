@@ -389,6 +389,8 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_TRACING_INSTRUMENTATIONS: "all"
+      KONG_TRACING_SAMPLING_RATE: "1.0"
     volumes:
       - ./infrastructure/kong/kong.yaml:/etc/kong/kong.yaml:ro
     ports:

@@ -69,6 +69,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/stays", stayHandler.CreateStay)
 	mux.HandleFunc("POST /api/v1/stays/check-in", stayHandler.CreateStay)
 	mux.HandleFunc("PUT /api/v1/stays/{id}", stayHandler.UpdateStay)
+	mux.HandleFunc("PATCH /api/v1/stays/{id}", stayHandler.UpdateStay)
 	mux.HandleFunc("PATCH /api/v1/stays/{id}/cancel", stayHandler.CancelStay)
 	mux.HandleFunc("DELETE /api/v1/stays/{id}", stayHandler.CancelStay)
 	mux.HandleFunc("POST /api/v1/stays/{id}/check-out", stayHandler.CheckOutStay)
