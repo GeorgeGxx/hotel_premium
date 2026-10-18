@@ -1,0 +1,449 @@
+services:
+  # ============================================================================
+  # 1. DATABASE & CACHE TIER (PostgreSQL 18 & Redis 8.8.1-alpine)
+  # ============================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: hotel_postgres
+    restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+    environment:
+      POSTGRES_USER: ${DB_USER:-hotel_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      POSTGRES_DB: ${DB_NAME:-hotel_premium_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./backend/config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hotel_admin} -d ${DB_NAME:-hotel_premium_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hotel_net
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: hotel_postgres_exporter
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-hotel_admin}:${DB_PASSWORD:-hotel_secure_password_2026}@postgres:5432/${DB_NAME:-hotel_premium_db}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - hotel_net
+
+  redis:
+    image: redis:8.8.1-alpine
+    container_name: hotel_redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hotel_net
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.82.0
+    container_name: hotel_redis_exporter
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: "redis:6379"
+    ports:
+      - "9121:9121"
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 2. EVENT STREAMING BACKBONE (Apache Kafka 7.8.0 KRaft & Kafka Exporter v1.9.0)
+  # ============================================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: hotel_kafka
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 29092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - hotel_net
+
+  kafka_init_topics:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: hotel_kafka_init_topics
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/kafka/init-topics.sh:/tmp/init-topics.sh:ro
+    entrypoint: ["/bin/sh", "/tmp/init-topics.sh"]
+    networks:
+      - hotel_net
+
+  kafka_exporter:
+    image: danielqsj/kafka-exporter:v1.9.0
+    container_name: hotel_kafka_exporter
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - "--kafka.server=kafka:29092"
+      - "--kafka.version=3.8.0"
+    ports:
+      - "${KAFKA_EXPORTER_PORT:-9308}:9308"
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 3. SECRET MANAGEMENT & ESO (HashiCorp Vault KV-v2 Secret Engine)
+  # ============================================================================
+  vault:
+    image: hashicorp/vault:1.18.5
+    container_name: hotel_vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+    volumes:
+      - vault_data:/vault/file
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hotel_net
+
+  vault_init:
+    image: hashicorp/vault:1.18.5
+    container_name: hotel_vault_init
+    restart: "no"
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-hotel_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      DB_NAME: ${DB_NAME:-hotel_premium_db}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-hotel-backend}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-hotel_backend_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./infrastructure/vault:/vault/config:ro
+    entrypoint: ["/bin/sh", "/vault/config/init-vault.sh"]
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 4. IDENTITY & ACCESS MANAGEMENT (Keycloak 26.8.1)
+  # ============================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    container_name: hotel_keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: ${DB_USER:-hotel_admin}
+      KC_DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_METRICS_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: "/"
+    ports:
+      - "${KEYCLOAK_PORT:-8181}:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080; echo -e 'GET /realms/hotel-realm HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 5. CORE APPLICATION TIER (Go 1.26 Backend & React 19 Frontend)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hotel_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: ${APP_PORT:-8080}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-hotel_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      DB_NAME: ${DB_NAME:-hotel_premium_db}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-25}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      OTEL_COLLECTOR_URL: otel-collector:4317
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: hotel-realm
+      KEYCLOAK_CLIENT_ID: hotel-backend
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-hotel_backend_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_STAY_TOPIC: ${KAFKA_STAY_TOPIC:-hotel.stays.lifecycle.v1}
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
+      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - hotel_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: hotel_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 6. API GATEWAY (Kong Gateway DB-Less v3.14.0.16)
+  # ============================================================================
+  kong:
+    image: kong/kong-gateway:3.14.0.16
+    container_name: hotel_kong
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yaml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+    volumes:
+      - ./infrastructure/kong/kong.yaml:/etc/kong/kong.yaml:ro
+    ports:
+      - "${KONG_PROXY_PORT:-8000}:8000"   # Kong Gateway Public Ingress (Frontend, API, Auth)
+      - "${KONG_ADMIN_PORT:-8001}:8001"   # Kong Admin & Prometheus Metrics
+    networks:
+      - hotel_net
+
+  # ============================================================================
+  # 7. OBSERVABILITY SUITE (OpenTelemetry Collector, Prometheus, Loki, Tempo, Alloy, Grafana)
+  # ============================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    container_name: hotel_otel_collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infrastructure/otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Collector internal metrics
+      - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check extension
+    networks:
+      - hotel_net
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: hotel_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - hotel_net
+
+  tempo:
+    image: grafana/tempo:3.0.3
+    container_name: hotel_tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infrastructure/tempo/tempo.yml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"   # Tempo HTTP query
+    networks:
+      - hotel_net
+
+  loki:
+    image: grafana/loki:3.7.4
+    container_name: hotel_loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./infrastructure/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    networks:
+      - hotel_net
+
+  alloy:
+    image: grafana/alloy:v1.19.1
+    container_name: hotel_alloy
+    restart: unless-stopped
+    command:
+      - "run"
+      - "/etc/alloy/config.alloy"
+      - "--server.http.listen-addr=0.0.0.0:3300"
+    volumes:
+      - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    ports:
+      - "${ALLOY_PORT:-3300}:3300"
+    networks:
+      - hotel_net
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    container_name: hotel_grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - hotel_net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  kafka_data:
+    driver: local
+  vault_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  tempo_data:
+    driver: local
+  loki_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  hotel_net:
+    driver: bridge

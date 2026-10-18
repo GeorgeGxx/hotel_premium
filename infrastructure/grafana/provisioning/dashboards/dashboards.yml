@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Hotel Premium Dashboards'
+    orgId: 1
+    folder: 'Hotel Premium'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

@@ -1,0 +1,70 @@
+_format_version: "3.0"
+
+services:
+  - name: frontend-service
+    url: http://frontend:80
+    routes:
+      - name: frontend-root-route
+        paths:
+          - /
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  - name: backend-service
+    url: http://backend:8080
+    routes:
+      - name: backend-api-route
+        paths:
+          - /api
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  - name: keycloak-service
+    url: http://keycloak:8080
+    routes:
+      - name: keycloak-auth-route
+        paths:
+          - /auth
+          - /realms
+          - /resources
+          - /js
+          - /admin
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+plugins:
+  - name: prometheus
+    config:
+      per_consumer: false
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-Type
+        - Authorization
+      exposed_headers:
+        - Authorization
+      credentials: true
+      max_age: 3600
