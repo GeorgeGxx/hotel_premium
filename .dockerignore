@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/dist-ssr
+**/bin
+**/*.exe
+**/*.test
+**/*.out
+**/.git
+**/.gitignore
+**/.env
+**/.env.*
+**/*.local
+**/npm-debug.log*
+**/yarn-debug.log*
+**/pnpm-debug.log*
+.DS_Store
+Thumbs.db

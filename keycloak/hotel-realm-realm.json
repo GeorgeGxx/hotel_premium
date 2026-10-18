@@ -1,0 +1,118 @@
+{
+  "id": "hotel-realm",
+  "realm": "hotel-realm",
+  "enabled": true,
+  "displayName": "Hotel Premium PMS",
+  "displayNameHtml": "<b>Hotel Premium</b> PMS",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "roles": {
+    "realm": [
+      {
+        "id": "role-admin-id",
+        "name": "ADMIN",
+        "description": "Hotel General Administrator with full access to PMS and management panel",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "id": "role-user-id",
+        "name": "USER",
+        "description": "Front Desk Receptionist with permissions to view, create, edit, and cancel reservations",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "defaultRoles": [
+    "USER"
+  ],
+  "clients": [
+    {
+      "id": "client-frontend-id",
+      "clientId": "hotel-frontend",
+      "name": "Hotel Premium Frontend Web SPA",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "rootUrl": "http://localhost",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "http://localhost:8000/*",
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "id": "client-backend-id",
+      "clientId": "hotel-backend",
+      "name": "Hotel Premium Go Backend API",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "hotel_backend_secret_key_2026",
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "id": "user-admin-001",
+      "username": "admin_user",
+      "enabled": true,
+      "email": "admin@hotelpremium.com",
+      "firstName": "Admin",
+      "lastName": "Manager",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN",
+        "USER"
+      ]
+    },
+    {
+      "id": "user-basic-002",
+      "username": "basic_user",
+      "enabled": true,
+      "email": "reception@hotelpremium.com",
+      "firstName": "FrontDesk",
+      "lastName": "Operator",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "basic123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    }
+  ]
+}
