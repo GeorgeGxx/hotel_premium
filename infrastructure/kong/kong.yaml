@@ -1,6 +1,7 @@
 _format_version: "3.0"
 
 services:
+  # 1. Frontend Web Ingress
   - name: frontend-service
     url: http://frontend:80
     routes:
@@ -12,6 +13,43 @@ services:
           - http
           - https
 
+  # 2. Decoupled Microservice: Room Service
+  - name: room-service
+    url: http://room-service:8081
+    routes:
+      - name: room-routes
+        paths:
+          - /api/v1/rooms
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # 3. Decoupled Microservice: Stay & Reservation Service
+  - name: stay-service
+    url: http://stay-service:8082
+    routes:
+      - name: stay-routes
+        paths:
+          - /api/v1/stays
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # 4. Decoupled Microservice: Billing & POS Service
+  - name: billing-service
+    url: http://billing-service:8083
+    routes:
+      - name: billing-routes
+        paths:
+          - /api/v1/billing
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # 5. Fallback Core Backend Ingress
   - name: backend-service
     url: http://backend:8080
     routes:
@@ -23,6 +61,7 @@ services:
           - http
           - https
 
+  # 6. Identity & Access Management (Keycloak)
   - name: keycloak-service
     url: http://keycloak:8080
     routes:
@@ -47,6 +86,13 @@ plugins:
       bandwidth_metrics: true
       upstream_health_metrics: true
 
+  - name: opentelemetry
+    config:
+      endpoint: http://otel-collector:4318/v1/traces
+      resource_attributes:
+        service.name: kong-api-gateway
+        service.version: "3.14.0.16"
+
   - name: cors
     config:
       origins:
@@ -64,7 +110,10 @@ plugins:
         - Content-Length
         - Content-Type
         - Authorization
+        - traceparent
+        - tracestate
       exposed_headers:
         - Authorization
+        - traceparent
       credentials: true
       max_age: 3600

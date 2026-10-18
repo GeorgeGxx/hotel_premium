@@ -1,7 +1,10 @@
 # ==============================================================================
-# STAGE 1: Build Go 1.26 Binary
+# STAGE 1: Build Go 1.26 Microservice Binary
+# Parameterized for: api | room-service | stay-service | billing-service | notification-worker
 # ==============================================================================
 FROM golang:1.26-alpine AS builder
+
+ARG SERVICE=api
 
 WORKDIR /app
 
@@ -14,10 +17,10 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static'" \
-    -o /app/bin/hotel-api ./cmd/api
+    -o /app/bin/service ./cmd/${SERVICE}
 
 # ==============================================================================
-# STAGE 2: Ultra-lightweight Minimal Scratch / Alpine Production Image
+# STAGE 2: Ultra-lightweight Minimal Alpine Production Image
 # ==============================================================================
 FROM alpine:3.21
 
@@ -26,10 +29,8 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata wget \
     && addgroup -S appgroup && adduser -S appuser -G appgroup
 
-COPY --from=builder /app/bin/hotel-api /app/hotel-api
+COPY --from=builder /app/bin/service /app/service
 
 USER appuser:appgroup
 
-EXPOSE 8080
-
-ENTRYPOINT ["/app/hotel-api"]
+ENTRYPOINT ["/app/service"]

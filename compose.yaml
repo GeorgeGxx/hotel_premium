@@ -227,12 +227,123 @@ services:
       - hotel_net
 
   # ============================================================================
-  # 5. CORE APPLICATION TIER (Go 1.26 Backend & React 19 Frontend)
+  # 5. CORE APPLICATION TIER (Microservices & Frontend)
   # ============================================================================
+  room-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: room-service
+    container_name: hotel_room_service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      ROOM_SERVICE_PORT: 8081
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-hotel_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      DB_NAME: ${DB_NAME:-hotel_premium_db}
+      REDIS_ADDR: redis:6379
+      OTEL_COLLECTOR_URL: otel-collector:4317
+    ports:
+      - "8081:8081"
+    networks:
+      - hotel_net
+
+  stay-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: stay-service
+    container_name: hotel_stay_service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      STAY_SERVICE_PORT: 8082
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-hotel_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      DB_NAME: ${DB_NAME:-hotel_premium_db}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
+      OTEL_COLLECTOR_URL: otel-collector:4317
+    ports:
+      - "8082:8082"
+    networks:
+      - hotel_net
+
+  billing-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: billing-service
+    container_name: hotel_billing_service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      BILLING_SERVICE_PORT: 8083
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-hotel_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
+      DB_NAME: ${DB_NAME:-hotel_premium_db}
+      OTEL_COLLECTOR_URL: otel-collector:4317
+    ports:
+      - "8083:8083"
+    networks:
+      - hotel_net
+
+  notification-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: notification-worker
+    container_name: hotel_notification_worker
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
+      OTEL_COLLECTOR_URL: otel-collector:4317
+    networks:
+      - hotel_net
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        SERVICE: api
     container_name: hotel_backend
     restart: unless-stopped
     depends_on:
@@ -313,6 +424,12 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      room-service:
+        condition: service_started
+      stay-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yaml

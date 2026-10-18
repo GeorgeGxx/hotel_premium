@@ -17,6 +17,14 @@ scrape_configs:
     static_configs:
       - targets: ["backend:8080"]
 
+  - job_name: "hotel-microservices"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "room-service:8081"
+          - "stay-service:8082"
+          - "billing-service:8083"
+
   - job_name: "kafka-exporter"
     metrics_path: /metrics
     static_configs:
