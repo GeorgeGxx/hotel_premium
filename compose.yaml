@@ -145,7 +145,7 @@ services:
   # 3. SECRET MANAGEMENT & ESO (HashiCorp Vault KV-v2 Secret Engine)
   # ============================================================================
   vault:
-    image: hashicorp/vault:1.18.5
+    image: hashicorp/vault:2.0.4
     container_name: hotel_vault
     restart: unless-stopped
     cap_add:
@@ -167,7 +167,7 @@ services:
       - hotel_net
 
   vault_init:
-    image: hashicorp/vault:1.18.5
+    image: hashicorp/vault:2.0.4
     container_name: hotel_vault_init
     restart: "no"
     depends_on:
@@ -332,62 +332,12 @@ services:
         condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
+      NOTIFICATION_WORKER_PORT: 8084
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
       OTEL_COLLECTOR_URL: otel-collector:4317
-    networks:
-      - hotel_net
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      args:
-        SERVICE: api
-    container_name: hotel_backend
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      otel-collector:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-      vault:
-        condition: service_healthy
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: ${APP_PORT:-8080}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-hotel_admin}
-      DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
-      DB_NAME: ${DB_NAME:-hotel_premium_db}
-      DB_SSLMODE: ${DB_SSLMODE:-disable}
-      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-25}
-      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      OTEL_COLLECTOR_URL: otel-collector:4317
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_REALM: hotel-realm
-      KEYCLOAK_CLIENT_ID: hotel-backend
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-hotel_backend_secret_key_2026}
-      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
-      KAFKA_STAY_TOPIC: ${KAFKA_STAY_TOPIC:-hotel.stays.lifecycle.v1}
-      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
-      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
     ports:
-      - "${APP_PORT:-8080}:8080"
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+      - "8084:8084"
     networks:
       - hotel_net
 
@@ -400,8 +350,10 @@ services:
     container_name: hotel_frontend
     restart: unless-stopped
     depends_on:
-      backend:
-        condition: service_healthy
+      room-service:
+        condition: service_started
+      stay-service:
+        condition: service_started
     ports:
       - "${FRONTEND_PORT:-80}:80"
     healthcheck:
@@ -421,8 +373,6 @@ services:
     restart: unless-stopped
     depends_on:
       frontend:
-        condition: service_healthy
-      backend:
         condition: service_healthy
       room-service:
         condition: service_started

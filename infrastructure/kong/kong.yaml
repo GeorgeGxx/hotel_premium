@@ -1,9 +1,109 @@
 _format_version: "3.0"
 
+# ==============================================================================
+# UPSTREAMS (CIRCUIT BREAKING & HEALTH CHECKS)
+# ==============================================================================
+upstreams:
+  - name: room-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /api/v1/health
+        interval: 5
+        healthy:
+          http_statuses: [200]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 503]
+          http_failures: 3
+          timeouts: 3
+      passive:
+        type: http
+        healthy:
+          http_statuses: [200, 201, 204]
+          successes: 3
+        unhealthy:
+          http_statuses: [500, 502, 503]
+          http_failures: 3
+    targets:
+      - target: room-service:8081
+        weight: 100
+
+  - name: stay-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /api/v1/health
+        interval: 5
+        healthy:
+          http_statuses: [200]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 503]
+          http_failures: 3
+          timeouts: 3
+      passive:
+        type: http
+        healthy:
+          http_statuses: [200, 201, 204]
+          successes: 3
+        unhealthy:
+          http_statuses: [500, 502, 503]
+          http_failures: 3
+    targets:
+      - target: stay-service:8082
+        weight: 100
+
+  - name: billing-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /api/v1/health
+        interval: 5
+        healthy:
+          http_statuses: [200]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 503]
+          http_failures: 3
+          timeouts: 3
+      passive:
+        type: http
+        healthy:
+          http_statuses: [200, 201, 204]
+          successes: 3
+        unhealthy:
+          http_statuses: [500, 502, 503]
+          http_failures: 3
+    targets:
+      - target: billing-service:8083
+        weight: 100
+
+  - name: frontend-upstream
+    algorithm: round-robin
+    targets:
+      - target: frontend:80
+        weight: 100
+
+  - name: keycloak-upstream
+    algorithm: round-robin
+    targets:
+      - target: keycloak:8080
+        weight: 100
+
+# ==============================================================================
+# SERVICES & ROUTES
+# ==============================================================================
 services:
   # 1. Frontend Web Ingress
   - name: frontend-service
-    url: http://frontend:80
+    host: frontend-upstream
+    protocol: http
+    port: 80
+    path: /
     routes:
       - name: frontend-root-route
         paths:
@@ -15,7 +115,10 @@ services:
 
   # 2. Decoupled Microservice: Room Service
   - name: room-service
-    url: http://room-service:8081
+    host: room-upstream
+    protocol: http
+    port: 8081
+    path: /
     routes:
       - name: room-routes
         paths:
@@ -27,7 +130,10 @@ services:
 
   # 3. Decoupled Microservice: Stay & Reservation Service
   - name: stay-service
-    url: http://stay-service:8082
+    host: stay-upstream
+    protocol: http
+    port: 8082
+    path: /
     routes:
       - name: stay-routes
         paths:
@@ -39,7 +145,10 @@ services:
 
   # 4. Decoupled Microservice: Billing & POS Service
   - name: billing-service
-    url: http://billing-service:8083
+    host: billing-upstream
+    protocol: http
+    port: 8083
+    path: /
     routes:
       - name: billing-routes
         paths:
@@ -49,21 +158,12 @@ services:
           - http
           - https
 
-  # 5. Fallback Core Backend Ingress
-  - name: backend-service
-    url: http://backend:8080
-    routes:
-      - name: backend-api-route
-        paths:
-          - /api
-        strip_path: false
-        protocols:
-          - http
-          - https
-
-  # 6. Identity & Access Management (Keycloak)
+  # 5. Identity & Access Management (Keycloak)
   - name: keycloak-service
-    url: http://keycloak:8080
+    host: keycloak-upstream
+    protocol: http
+    port: 8080
+    path: /
     routes:
       - name: keycloak-auth-route
         paths:
@@ -77,7 +177,11 @@ services:
           - http
           - https
 
+# ==============================================================================
+# ENTERPRISE GATEWAY PLUGINS
+# ==============================================================================
 plugins:
+  # 1. Prometheus Telemetry Plugin
   - name: prometheus
     config:
       per_consumer: false
@@ -86,6 +190,7 @@ plugins:
       bandwidth_metrics: true
       upstream_health_metrics: true
 
+  # 2. OpenTelemetry Tracing Plugin (W3C TraceContext Ingress)
   - name: opentelemetry
     config:
       endpoint: http://otel-collector:4318/v1/traces
@@ -93,6 +198,7 @@ plugins:
         service.name: kong-api-gateway
         service.version: "3.14.0.16"
 
+  # 3. Cross-Origin Resource Sharing (CORS)
   - name: cors
     config:
       origins:
@@ -117,3 +223,11 @@ plugins:
         - traceparent
       credentials: true
       max_age: 3600
+
+  # 4. Global Anti-DoS Rate Limiting
+  - name: rate-limiting
+    config:
+      minute: 120
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false

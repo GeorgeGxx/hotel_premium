@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -24,10 +26,15 @@ func main() {
 	slog.Info("Starting Notification Worker (Kafka 7.8.0 Consumer Microservice)...")
 
 	cfg := config.Load()
+	port := os.Getenv("NOTIFICATION_WORKER_PORT")
+	if port == "" {
+		port = "8084"
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// 1. OpenTelemetry Tracing Initialization
 	shutdownTracer, err := telemetry.InitTracer(ctx, "notification-worker", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {
@@ -37,6 +44,31 @@ func main() {
 		}()
 	}
 
+	// 2. Metrics & Health Endpoint for Prometheus & Observability Mesh
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "UP",
+			"service": "notification-worker",
+			"topic":   cfg.KafkaStayTopic,
+		})
+	})
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		slog.Info("Notification Worker metrics & health listening", "port", port)
+		_ = server.ListenAndServe()
+	}()
+
+	// 3. Kafka Consumer Setup
 	reader := kafkaGo.NewReader(kafkaGo.ReaderConfig{
 		Brokers:        []string{cfg.KafkaBootstrapServers},
 		GroupID:        "hotel-notification-workers",
@@ -56,11 +88,15 @@ func main() {
 
 	propagator := otel.GetTextMapPropagator()
 
+	// 4. Message Consumer Loop
 	for {
 		msg, err := reader.ReadMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				slog.Info("Notification worker shutting down cleanly...")
+				shutdownCtx, sCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer sCancel()
+				_ = server.Shutdown(shutdownCtx)
 				return
 			}
 			slog.Warn("Kafka read message error, retrying...", "error", err)

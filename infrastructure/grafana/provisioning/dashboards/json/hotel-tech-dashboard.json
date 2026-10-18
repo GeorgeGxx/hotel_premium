@@ -161,8 +161,8 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "go_goroutines{job=\"hotel-backend\"} or go_goroutines",
-          "legendFormat": "Goroutines ({{job}})",
+          "expr": "go_goroutines{job=\"hotel-microservices\"} or go_goroutines",
+          "legendFormat": "Goroutines ({{instance}})",
           "refId": "A"
         }
       ],
@@ -186,13 +186,13 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "go_memstats_alloc_bytes{job=\"hotel-backend\"} or go_memstats_alloc_bytes",
-          "legendFormat": "Heap Allocated ({{job}})",
+          "expr": "go_memstats_alloc_bytes{job=\"hotel-microservices\"} or go_memstats_alloc_bytes",
+          "legendFormat": "Heap Allocated ({{instance}})",
           "refId": "A"
         },
         {
-          "expr": "go_memstats_sys_bytes{job=\"hotel-backend\"} or go_memstats_sys_bytes",
-          "legendFormat": "Sys Memory ({{job}})",
+          "expr": "go_memstats_sys_bytes{job=\"hotel-microservices\"} or go_memstats_sys_bytes",
+          "legendFormat": "Sys Memory ({{instance}})",
           "refId": "B"
         }
       ],
@@ -216,7 +216,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(go_gc_duration_seconds_count{job=\"hotel-backend\"}[1m]) or rate(go_gc_duration_seconds_count[1m])",
+          "expr": "rate(go_gc_duration_seconds_count{job=\"hotel-microservices\"}[1m]) or rate(go_gc_duration_seconds_count[1m])",
           "legendFormat": "GC Cycles/sec",
           "refId": "A"
         }
