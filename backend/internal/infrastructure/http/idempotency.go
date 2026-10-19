@@ -12,6 +12,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// IdempotencyBackend defines the storage and atomic distributed locking contract
+type IdempotencyBackend interface {
+	Get(ctx context.Context, key string) (string, error)
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
+	Del(ctx context.Context, keys ...string) error
+}
+
 type CachedResponse struct {
 	StatusCode int               `json:"status_code"`
 	Headers    map[string]string `json:"headers"`
@@ -33,15 +41,15 @@ func (r *responseRecorder) WriteString(s string) (int, error) {
 	return r.ResponseWriter.WriteString(s)
 }
 
-// GinIdempotencyMiddleware implements enterprise idempotency with Redis 8.8.1 distributed locking
-// Following standard IETF / Stripe `Idempotency-Key` header specification
-func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.HandlerFunc {
+// GinIdempotencyMiddleware enforces single-execution semantics across mutating HTTP routes
+// Adheres to Clean Code principles with zero duplicate logic and pluggable storage backends
+func GinIdempotencyMiddleware(backend IdempotencyBackend, ttl time.Duration) gin.HandlerFunc {
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
 
 	return func(c *gin.Context) {
-		// Only apply to mutating HTTP methods
+		// Only mutating methods require idempotency guards
 		if c.Request.Method != http.MethodPost && c.Request.Method != http.MethodPut && c.Request.Method != http.MethodPatch {
 			c.Next()
 			return
@@ -52,8 +60,7 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 			key = c.GetHeader("X-Idempotency-Key")
 		}
 
-		// If no idempotency key provided, proceed normally
-		if key == "" || client == nil {
+		if key == "" || backend == nil {
 			c.Next()
 			return
 		}
@@ -62,12 +69,11 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 		cacheKey := "idempotency:response:" + key
 		lockKey := "idempotency:lock:" + key
 
-		// 1. Check if response is already cached from previous execution
-		cachedVal, err := client.Get(ctx, cacheKey).Result()
-		if err == nil && cachedVal != "" {
+		// 1. Return cached response if previously processed successfully
+		if cachedVal, err := backend.Get(ctx, cacheKey); err == nil && cachedVal != "" {
 			var cached CachedResponse
 			if err := json.Unmarshal([]byte(cachedVal), &cached); err == nil {
-				slog.Info("Idempotent request served from Redis 8.8.1 cache",
+				slog.Info("Idempotent request served from cache",
 					"idempotency_key", key,
 					"status_code", cached.StatusCode,
 				)
@@ -82,9 +88,8 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 			}
 		}
 
-		// 2. Distributed Lock: Prevent concurrent duplicate requests from executing simultaneously
-		// Uses atomic SETNX with 30s expiration
-		acquired, err := client.SetNX(ctx, lockKey, "IN_FLIGHT", 30*time.Second).Result()
+		// 2. Distributed Lock: Prevent race conditions from concurrent duplicate requests
+		acquired, err := backend.SetNX(ctx, lockKey, "IN_FLIGHT", 30*time.Second)
 		if err != nil {
 			slog.Warn("Failed to acquire idempotency lock", "key", key, "error", err)
 			c.Next()
@@ -92,7 +97,6 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 		}
 
 		if !acquired {
-			// A concurrent request with the same key is currently running
 			c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 				"error":           "concurrent request with identical Idempotency-Key is currently in flight",
 				"idempotency_key": key,
@@ -100,14 +104,13 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 			return
 		}
 
-		// Ensure lock is released after request finishes
 		defer func() {
 			delCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
-			_ = client.Del(delCtx, lockKey).Err()
+			_ = backend.Del(delCtx, lockKey)
 		}()
 
-		// 3. Record response to cache it
+		// 3. Capture response body and headers during execution
 		recorder := &responseRecorder{
 			ResponseWriter: c.Writer,
 			body:           &bytes.Buffer{},
@@ -116,7 +119,7 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 
 		c.Next()
 
-		// 4. Cache response on success (2xx status codes)
+		// 4. Cache successful response (2xx)
 		statusCode := c.Writer.Status()
 		if statusCode >= 200 && statusCode < 300 {
 			headers := make(map[string]string)
@@ -133,77 +136,33 @@ func GinIdempotencyMiddleware(client *redis.Client, ttl time.Duration) gin.Handl
 			}
 
 			if bytesData, err := json.Marshal(payload); err == nil {
-				_ = client.Set(ctx, cacheKey, bytesData, ttl).Err()
+				_ = backend.Set(ctx, cacheKey, bytesData, ttl)
 			}
 		}
 	}
 }
 
-// In-Memory Idempotency store for testing without live Redis
-type InMemoryIdempotencyStore struct {
-	cache map[string]CachedResponse
-	locks map[string]bool
+// RedisIdempotencyBackend adapts *redis.Client to IdempotencyBackend
+type RedisIdempotencyBackend struct {
+	client *redis.Client
 }
 
-func NewInMemoryIdempotencyStore() *InMemoryIdempotencyStore {
-	return &InMemoryIdempotencyStore{
-		cache: make(map[string]CachedResponse),
-		locks: make(map[string]bool),
-	}
+func NewRedisIdempotencyBackend(client *redis.Client) *RedisIdempotencyBackend {
+	return &RedisIdempotencyBackend{client: client}
 }
 
-func (s *InMemoryIdempotencyStore) Middleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Request.Method != http.MethodPost && c.Request.Method != http.MethodPut && c.Request.Method != http.MethodPatch {
-			c.Next()
-			return
-		}
+func (r *RedisIdempotencyBackend) Get(ctx context.Context, key string) (string, error) {
+	return r.client.Get(ctx, key).Result()
+}
 
-		key := c.GetHeader("Idempotency-Key")
-		if key == "" {
-			c.Next()
-			return
-		}
+func (r *RedisIdempotencyBackend) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, key, value, expiration).Result()
+}
 
-		// 1. Check cached
-		if cached, ok := s.cache[key]; ok {
-			for k, v := range cached.Headers {
-				c.Writer.Header().Set(k, v)
-			}
-			c.Writer.Header().Set("X-Cache-Lookup", "IDEMPOTENT_HIT")
-			c.Data(cached.StatusCode, "application/json", []byte(cached.Body))
-			c.Abort()
-			return
-		}
+func (r *RedisIdempotencyBackend) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return r.client.Set(ctx, key, value, expiration).Err()
+}
 
-		// 2. Check lock
-		if s.locks[key] {
-			c.AbortWithStatusJSON(http.StatusConflict, gin.H{
-				"error":           "concurrent request with identical Idempotency-Key is currently in flight",
-				"idempotency_key": key,
-			})
-			return
-		}
-
-		s.locks[key] = true
-		defer func() {
-			delete(s.locks, key)
-		}()
-
-		recorder := &responseRecorder{
-			ResponseWriter: c.Writer,
-			body:           &bytes.Buffer{},
-		}
-		c.Writer = recorder
-
-		c.Next()
-
-		statusCode := c.Writer.Status()
-		if statusCode >= 200 && statusCode < 300 {
-			s.cache[key] = CachedResponse{
-				StatusCode: statusCode,
-				Body:       recorder.body.String(),
-			}
-		}
-	}
+func (r *RedisIdempotencyBackend) Del(ctx context.Context, keys ...string) error {
+	return r.client.Del(ctx, keys...).Err()
 }

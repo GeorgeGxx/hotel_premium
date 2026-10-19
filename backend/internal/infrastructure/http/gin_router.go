@@ -85,7 +85,7 @@ func GinCORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role, Idempotency-Key, X-Idempotency-Key")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -116,133 +116,117 @@ func NewGinBaseEngine(serviceName string) *gin.Engine {
 	return engine
 }
 
+// ==============================================================================
+// MODULAR ROUTE REGISTRATION (DRY - Single Source of Truth)
+// ==============================================================================
+
+func RegisterRoomRoutes(group *gin.RouterGroup, roomHandler *handler.RoomHandler) {
+	if roomHandler == nil {
+		return
+	}
+	group.GET("", GinAdapter(roomHandler.ListRooms))
+	group.GET("/:id", GinAdapter(roomHandler.GetRoomByID))
+	group.PATCH("/:id/status", GinAdapter(roomHandler.UpdateRoomStatus))
+	group.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(roomHandler.UpdateRoomPrice))
+}
+
+func RegisterStayRoutes(group *gin.RouterGroup, stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator) {
+	if stayHandler == nil {
+		return
+	}
+	group.GET("", GinAdapter(stayHandler.ListStays))
+	group.GET("/:id", GinAdapter(stayHandler.GetStayByID))
+	group.POST("", GinAdapter(stayHandler.CreateStay))
+	group.POST("/check-in", GinAdapter(stayHandler.CreateStay))
+	group.PUT("/:id", GinAdapter(stayHandler.UpdateStay))
+	group.PATCH("/:id", GinAdapter(stayHandler.UpdateStay))
+	group.PATCH("/:id/cancel", GinAdapter(stayHandler.CancelStay))
+	group.DELETE("/:id", GinAdapter(stayHandler.CancelStay))
+	group.POST("/:id/check-out", GinAdapter(stayHandler.CheckOutStay))
+
+	if sagaOrchestrator != nil {
+		group.POST("/saga-booking", func(c *gin.Context) {
+			var input stay.CreateStayInput
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid saga booking payload"})
+				return
+			}
+
+			userRole := c.GetString("user_role")
+			if userRole == "" {
+				userRole = RoleUser
+			}
+
+			result, err := sagaOrchestrator.Execute(c.Request.Context(), input, userRole)
+			if err != nil {
+				c.JSON(http.StatusConflict, result)
+				return
+			}
+
+			c.JSON(http.StatusCreated, result)
+		})
+	}
+}
+
+func RegisterBillingRoutes(group *gin.RouterGroup, billingHandler *handler.BillingHandler) {
+	if billingHandler == nil {
+		return
+	}
+	group.GET("/products", GinAdapter(billingHandler.ListProducts))
+	group.POST("/charges", GinAdapter(billingHandler.AddStayCharge))
+	group.GET("/stays/:id/charges", GinAdapter(billingHandler.ListStayCharges))
+	group.POST("/shifts/open", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.OpenCashShift))
+	group.POST("/shifts/:id/close", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.CloseCashShift))
+}
+
+// ==============================================================================
+// ENGINE CONSTRUCTORS
+// ==============================================================================
+
 // NewGinRoomEngine builds the Gin v1.12.0 router for room-service
 func NewGinRoomEngine(roomHandler *handler.RoomHandler) *gin.Engine {
 	engine := NewGinBaseEngine("room-service")
-
-	if roomHandler != nil {
-		rooms := engine.Group("/api/v1/rooms")
-		{
-			rooms.GET("", GinAdapter(roomHandler.ListRooms))
-			rooms.GET("/:id", GinAdapter(roomHandler.GetRoomByID))
-			rooms.PATCH("/:id/status", GinAdapter(roomHandler.UpdateRoomStatus))
-			// Admin-only price update protected by Zero-Trust RBAC
-			rooms.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(roomHandler.UpdateRoomPrice))
-		}
-	}
-
+	RegisterRoomRoutes(engine.Group("/api/v1/rooms"), roomHandler)
 	return engine
 }
 
-// NewGinStayEngine builds the Gin v1.12.0 router for stay-service with Saga Orchestrator and Idempotency support
+// NewGinStayEngine builds the Gin v1.12.0 router for stay-service with Saga and Idempotency
 func NewGinStayEngine(stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator, redisClients ...*redis.Client) *gin.Engine {
 	engine := NewGinBaseEngine("stay-service")
+	stays := engine.Group("/api/v1/stays")
 
-	var rc *redis.Client
-	if len(redisClients) > 0 {
-		rc = redisClients[0]
+	if len(redisClients) > 0 && redisClients[0] != nil {
+		stays.Use(GinIdempotencyMiddleware(NewRedisIdempotencyBackend(redisClients[0]), 24*time.Hour))
 	}
 
-	if stayHandler != nil {
-		stays := engine.Group("/api/v1/stays")
-		if rc != nil {
-			stays.Use(GinIdempotencyMiddleware(rc, 24*time.Hour))
-		}
-		{
-			stays.GET("", GinAdapter(stayHandler.ListStays))
-			stays.GET("/:id", GinAdapter(stayHandler.GetStayByID))
-			stays.POST("", GinAdapter(stayHandler.CreateStay))
-			stays.POST("/check-in", GinAdapter(stayHandler.CreateStay))
-			stays.PUT("/:id", GinAdapter(stayHandler.UpdateStay))
-			stays.PATCH("/:id", GinAdapter(stayHandler.UpdateStay))
-			stays.PATCH("/:id/cancel", GinAdapter(stayHandler.CancelStay))
-			stays.DELETE("/:id", GinAdapter(stayHandler.CancelStay))
-			stays.POST("/:id/check-out", GinAdapter(stayHandler.CheckOutStay))
-
-			// Distributed Saga Booking endpoint with automated compensating rollbacks
-			if sagaOrchestrator != nil {
-				stays.POST("/saga-booking", func(c *gin.Context) {
-					var input stay.CreateStayInput
-					if err := c.ShouldBindJSON(&input); err != nil {
-						c.JSON(http.StatusBadRequest, gin.H{"error": "invalid saga booking payload"})
-						return
-					}
-
-					userRole := c.GetString("user_role")
-					if userRole == "" {
-						userRole = RoleUser
-					}
-
-					result, err := sagaOrchestrator.Execute(c.Request.Context(), input, userRole)
-					if err != nil {
-						c.JSON(http.StatusConflict, result)
-						return
-					}
-
-					c.JSON(http.StatusCreated, result)
-				})
-			}
-		}
-	}
-
+	RegisterStayRoutes(stays, stayHandler, sagaOrchestrator)
 	return engine
 }
 
-// NewGinBillingEngine builds the Gin v1.12.0 router for billing-service with Idempotency support
+// NewGinBillingEngine builds the Gin v1.12.0 router for billing-service with Idempotency
 func NewGinBillingEngine(billingHandler *handler.BillingHandler, redisClients ...*redis.Client) *gin.Engine {
 	engine := NewGinBaseEngine("billing-service")
+	billingGroup := engine.Group("/api/v1/billing")
 
-	var rc *redis.Client
-	if len(redisClients) > 0 {
-		rc = redisClients[0]
+	if len(redisClients) > 0 && redisClients[0] != nil {
+		billingGroup.Use(GinIdempotencyMiddleware(NewRedisIdempotencyBackend(redisClients[0]), 24*time.Hour))
 	}
 
-	if billingHandler != nil {
-		billingGroup := engine.Group("/api/v1/billing")
-		if rc != nil {
-			billingGroup.Use(GinIdempotencyMiddleware(rc, 24*time.Hour))
-		}
-		{
-			billingGroup.GET("/products", GinAdapter(billingHandler.ListProducts))
-			billingGroup.POST("/charges", GinAdapter(billingHandler.AddStayCharge))
-			billingGroup.GET("/stays/:id/charges", GinAdapter(billingHandler.ListStayCharges))
-			// Shift sensitive operations protected by Zero-Trust RBAC
-			billingGroup.POST("/shifts/open", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.OpenCashShift))
-			billingGroup.POST("/shifts/:id/close", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.CloseCashShift))
-		}
-	}
-
+	RegisterBillingRoutes(billingGroup, billingHandler)
 	return engine
 }
 
-// NewGinUnifiedEngine builds an all-in-one Gin engine for testing or monolithic fallback
+type RouterDependencies struct {
+	RoomHandler    *handler.RoomHandler
+	StayHandler    *handler.StayHandler
+	BillingHandler *handler.BillingHandler
+}
+
+// NewGinUnifiedEngine builds an all-in-one Gin engine using the exact same DRY route definitions
 func NewGinUnifiedEngine(deps RouterDependencies, sagaOrchestrator *saga.BookingSagaOrchestrator) *gin.Engine {
 	engine := NewGinBaseEngine("hotel-unified")
-
-	if deps.RoomHandler != nil {
-		rooms := engine.Group("/api/v1/rooms")
-		{
-			rooms.GET("", GinAdapter(deps.RoomHandler.ListRooms))
-			rooms.GET("/:id", GinAdapter(deps.RoomHandler.GetRoomByID))
-			rooms.PATCH("/:id/status", GinAdapter(deps.RoomHandler.UpdateRoomStatus))
-			rooms.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(deps.RoomHandler.UpdateRoomPrice))
-		}
-	}
-
-	if deps.StayHandler != nil {
-		stays := engine.Group("/api/v1/stays")
-		{
-			stays.GET("", GinAdapter(deps.StayHandler.ListStays))
-			stays.GET("/:id", GinAdapter(deps.StayHandler.GetStayByID))
-			stays.POST("", GinAdapter(deps.StayHandler.CreateStay))
-			stays.POST("/check-in", GinAdapter(deps.StayHandler.CreateStay))
-			stays.PUT("/:id", GinAdapter(deps.StayHandler.UpdateStay))
-			stays.PATCH("/:id", GinAdapter(deps.StayHandler.UpdateStay))
-			stays.PATCH("/:id/cancel", GinAdapter(deps.StayHandler.CancelStay))
-			stays.DELETE("/:id", GinAdapter(deps.StayHandler.CancelStay))
-			stays.POST("/:id/check-out", GinAdapter(deps.StayHandler.CheckOutStay))
-		}
-	}
-
+	RegisterRoomRoutes(engine.Group("/api/v1/rooms"), deps.RoomHandler)
+	RegisterStayRoutes(engine.Group("/api/v1/stays"), deps.StayHandler, sagaOrchestrator)
+	RegisterBillingRoutes(engine.Group("/api/v1/billing"), deps.BillingHandler)
 	return engine
 }
