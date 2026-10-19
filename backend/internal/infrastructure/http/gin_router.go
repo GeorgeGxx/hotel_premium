@@ -11,6 +11,7 @@ import (
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -133,12 +134,20 @@ func NewGinRoomEngine(roomHandler *handler.RoomHandler) *gin.Engine {
 	return engine
 }
 
-// NewGinStayEngine builds the Gin v1.12.0 router for stay-service with Saga Orchestrator support
-func NewGinStayEngine(stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator) *gin.Engine {
+// NewGinStayEngine builds the Gin v1.12.0 router for stay-service with Saga Orchestrator and Idempotency support
+func NewGinStayEngine(stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator, redisClients ...*redis.Client) *gin.Engine {
 	engine := NewGinBaseEngine("stay-service")
+
+	var rc *redis.Client
+	if len(redisClients) > 0 {
+		rc = redisClients[0]
+	}
 
 	if stayHandler != nil {
 		stays := engine.Group("/api/v1/stays")
+		if rc != nil {
+			stays.Use(GinIdempotencyMiddleware(rc, 24*time.Hour))
+		}
 		{
 			stays.GET("", GinAdapter(stayHandler.ListStays))
 			stays.GET("/:id", GinAdapter(stayHandler.GetStayByID))
@@ -179,12 +188,20 @@ func NewGinStayEngine(stayHandler *handler.StayHandler, sagaOrchestrator *saga.B
 	return engine
 }
 
-// NewGinBillingEngine builds the Gin v1.12.0 router for billing-service
-func NewGinBillingEngine(billingHandler *handler.BillingHandler) *gin.Engine {
+// NewGinBillingEngine builds the Gin v1.12.0 router for billing-service with Idempotency support
+func NewGinBillingEngine(billingHandler *handler.BillingHandler, redisClients ...*redis.Client) *gin.Engine {
 	engine := NewGinBaseEngine("billing-service")
+
+	var rc *redis.Client
+	if len(redisClients) > 0 {
+		rc = redisClients[0]
+	}
 
 	if billingHandler != nil {
 		billingGroup := engine.Group("/api/v1/billing")
+		if rc != nil {
+			billingGroup.Use(GinIdempotencyMiddleware(rc, 24*time.Hour))
+		}
 		{
 			billingGroup.GET("/products", GinAdapter(billingHandler.ListProducts))
 			billingGroup.POST("/charges", GinAdapter(billingHandler.AddStayCharge))

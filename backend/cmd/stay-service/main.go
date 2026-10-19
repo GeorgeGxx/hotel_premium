@@ -16,6 +16,7 @@ import (
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/postgres"
+	"github.com/hotelpremium/backend/internal/infrastructure/redis"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 )
 
@@ -88,8 +89,14 @@ func main() {
 		go outboxPublisher.Start(ctx)
 	}
 
-	// Gin v1.12.0 Engine with Tracing, Metrics, SSE and Saga Orchestrator
-	ginEngine := infraHttp.NewGinStayEngine(stayHandler, sagaOrchestrator)
+	// Redis 8.8.1 client for distributed Idempotency locking and Cache-Aside
+	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
+	if err == nil && redisClient != nil {
+		defer redisClient.Close()
+	}
+
+	// Gin v1.12.0 Engine with Tracing, Metrics, SSE, Saga Orchestrator & Idempotency
+	ginEngine := infraHttp.NewGinStayEngine(stayHandler, sagaOrchestrator, redisClient)
 
 	server := &http.Server{
 		Addr:         ":" + port,
