@@ -11,19 +11,18 @@ import (
 	"time"
 
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
+	infraHttp "github.com/hotelpremium/backend/internal/infrastructure/http"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/postgres"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting Stay & Reservations Service (Microservice) on port 8082...")
+	slog.Info("Starting Stay & Reservations Service (Microservice) with Go 1.26, Gin v1.12.0 and GORM v1.31.2...")
 
 	cfg := config.Load()
 	port := os.Getenv("STAY_SERVICE_PORT")
@@ -34,6 +33,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// OpenTelemetry Tracing via Tempo / Alloy
 	shutdownTracer, err := telemetry.InitTracer(ctx, "stay-service", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {
@@ -43,6 +43,19 @@ func main() {
 		}()
 	}
 
+	// GORM v1.31.2 PostgreSQL initialization
+	gormDB, err := postgres.NewGormDB(ctx, cfg)
+	if err != nil {
+		slog.Error("GORM database connection initialization failed", "error", err)
+	}
+	if gormDB != nil {
+		sqlDB, err := gormDB.DB()
+		if err == nil && sqlDB != nil {
+			defer sqlDB.Close()
+		}
+	}
+
+	// PostgreSQL Pool for high-throughput Outbox Publisher
 	dbPool, err := postgres.NewConnectionPool(ctx, cfg)
 	if err != nil {
 		slog.Error("Database connection initialization failed", "error", err)
@@ -51,7 +64,8 @@ func main() {
 		defer dbPool.Close()
 	}
 
-	stayRepo := postgres.NewStayRepository(dbPool)
+	// Initialize GORM Stay Repository and Handler
+	stayRepo := postgres.NewGormStayRepository(gormDB)
 	stayHandler := handler.NewStayHandler(stayRepo)
 
 	// Kafka KRaft Transactional Outbox Publisher
@@ -60,32 +74,19 @@ func main() {
 		go outboxPublisher.Start(ctx)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/health", handler.HealthCheck)
-	mux.Handle("GET /metrics", promhttp.Handler())
-
-	mux.HandleFunc("GET /api/v1/stays", stayHandler.ListStays)
-	mux.HandleFunc("GET /api/v1/stays/{id}", stayHandler.GetStayByID)
-	mux.HandleFunc("POST /api/v1/stays", stayHandler.CreateStay)
-	mux.HandleFunc("POST /api/v1/stays/check-in", stayHandler.CreateStay)
-	mux.HandleFunc("PUT /api/v1/stays/{id}", stayHandler.UpdateStay)
-	mux.HandleFunc("PATCH /api/v1/stays/{id}", stayHandler.UpdateStay)
-	mux.HandleFunc("PATCH /api/v1/stays/{id}/cancel", stayHandler.CancelStay)
-	mux.HandleFunc("DELETE /api/v1/stays/{id}", stayHandler.CancelStay)
-	mux.HandleFunc("POST /api/v1/stays/{id}/check-out", stayHandler.CheckOutStay)
-
-	handlerChain := corsMiddleware(telemetryMiddleware("stay-service", mux))
+	// Gin v1.12.0 Engine with Tracing, Metrics and Slog Middleware
+	ginEngine := infraHttp.NewGinStayEngine(stayHandler)
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      handlerChain,
+		Handler:      ginEngine,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {
-		slog.Info("Stay Service listening", "port", port, "env", cfg.AppEnv)
+		slog.Info("Stay Service listening with Gin v1.12.0", "port", port, "env", cfg.AppEnv)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Stay Service fatal error", "error", err)
 			os.Exit(1)
@@ -97,31 +98,4 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = server.Shutdown(shutdownCtx)
-}
-
-func telemetryMiddleware(serviceName string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if telemetry.Tracer == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		ctx, span := telemetry.Tracer.Start(r.Context(), serviceName+": "+r.Method+" "+r.URL.Path,
-			trace.WithSpanKind(trace.SpanKindServer),
-		)
-		defer span.End()
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
