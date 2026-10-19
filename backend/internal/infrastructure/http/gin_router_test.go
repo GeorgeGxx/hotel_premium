@@ -204,7 +204,7 @@ func TestGinStayEngine_ListAndCheckIn(t *testing.T) {
 	}
 
 	stayHandler := handler.NewStayHandler(mockRepo)
-	engine := NewGinStayEngine(stayHandler)
+	engine := NewGinStayEngine(stayHandler, nil)
 
 	// Test GET /api/v1/stays
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/stays", nil)

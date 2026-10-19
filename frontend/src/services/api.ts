@@ -438,3 +438,73 @@ export async function processCheckIn(stayData: Partial<Stay>): Promise<{ success
     return { success: true, message: 'Check-in processed' };
   }
 }
+
+// ==============================================================================
+// REAL-TIME SERVER-SENT EVENTS (SSE) & SAGA INTEGRATION
+// ==============================================================================
+
+/**
+ * Connects to the backend SSE stream for instant Front Desk room & reservation sync
+ */
+export function subscribeToLiveEvents(
+  onEvent: (eventType: string, data: any) => void
+): () => void {
+  try {
+    const sseUrl = `${API_BASE}/events/live`;
+    const eventSource = new EventSource(sseUrl);
+
+    eventSource.addEventListener('room_updated', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        onEvent('room_updated', payload);
+      } catch (err) {
+        console.error('Failed to parse room_updated SSE:', err);
+      }
+    });
+
+    eventSource.addEventListener('stay_created', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        onEvent('stay_created', payload);
+      } catch (err) {
+        console.error('Failed to parse stay_created SSE:', err);
+      }
+    });
+
+    eventSource.onerror = () => {
+      // Automatic browser reconnect handling
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  } catch (err) {
+    console.warn('SSE EventSource not supported in current environment:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Executes a distributed booking through the Saga Orchestrator
+ */
+export async function bookWithSaga(
+  dto: CreateStayDTO,
+  userRole: string = 'ADMIN'
+): Promise<{ saga_id: string; status: string; stay_details?: StayDetails }> {
+  const res = await fetch(`${API_BASE}/stays/saga-booking`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Role': userRole,
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error_message || 'Saga booking transaction failed');
+  }
+
+  return res.json();
+}
+

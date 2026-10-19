@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
+	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
@@ -23,7 +25,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting Notification Worker (Kafka 7.8.0 Consumer Microservice)...")
+	slog.Info("Starting Notification Worker (Kafka 7.8.0 Consumer with DLQ & Exponential Backoff)...")
 
 	cfg := config.Load()
 	port := os.Getenv("NOTIFICATION_WORKER_PORT")
@@ -44,12 +46,6 @@ func main() {
 		}()
 	}
 
-	// Emit initial startup span so the service is immediately discovered by Tempo
-	if telemetry.Tracer != nil {
-		_, startupSpan := telemetry.Tracer.Start(ctx, "NotificationWorkerStartup")
-		startupSpan.End()
-	}
-
 	// 2. Metrics & Health Endpoint for Prometheus & Observability Mesh
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +58,7 @@ func main() {
 			"status":  "UP",
 			"service": "notification-worker",
 			"topic":   cfg.KafkaStayTopic,
+			"dlq":     cfg.KafkaStayTopic + ".DLQ",
 		})
 	})
 	mux.Handle("GET /metrics", promhttp.Handler())
@@ -78,24 +75,11 @@ func main() {
 		_ = server.ListenAndServe()
 	}()
 
-	// Periodic trace heartbeat to keep notification-worker active in Tempo & Grafana
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if telemetry.Tracer != nil {
-					_, span := telemetry.Tracer.Start(ctx, "NotificationWorkerHeartbeat")
-					span.End()
-				}
-			}
-		}
-	}()
+	// 3. Kafka DLQ Manager Initialization (3 retries, 500ms base backoff)
+	dlqManager := kafka.NewDLQManager(cfg.KafkaBootstrapServers, cfg.KafkaStayTopic, 3, 500*time.Millisecond)
+	defer dlqManager.Close()
 
-	// 3. Kafka Consumer Setup
+	// 4. Kafka Consumer Setup
 	reader := kafkaGo.NewReader(kafkaGo.ReaderConfig{
 		Brokers:        []string{cfg.KafkaBootstrapServers},
 		GroupID:        "hotel-notification-workers",
@@ -107,15 +91,16 @@ func main() {
 	})
 	defer reader.Close()
 
-	slog.Info("Notification Worker connected to Kafka",
+	slog.Info("Notification Worker connected to Kafka 7.8.0 with DLQ",
 		"broker", cfg.KafkaBootstrapServers,
 		"topic", cfg.KafkaStayTopic,
+		"dlq_topic", cfg.KafkaStayTopic+".DLQ",
 		"group_id", "hotel-notification-workers",
 	)
 
 	propagator := otel.GetTextMapPropagator()
 
-	// 4. Message Consumer Loop
+	// 5. Message Consumer Loop
 	for {
 		msg, err := reader.ReadMessage(ctx)
 		if err != nil {
@@ -131,61 +116,64 @@ func main() {
 			continue
 		}
 
-		// Extract OpenTelemetry TraceContext from Kafka Message Headers
-		carrier := propagation.HeaderCarrier{}
-		var eventType, correlationID string
-		for _, h := range msg.Headers {
-			carrier[h.Key] = []string{string(h.Value)}
-			if h.Key == "event_type" {
-				eventType = string(h.Value)
+		// Process with Exponential Backoff and Poison-Pill DLQ Protection
+		_ = dlqManager.ProcessWithRetry(ctx, msg, func(m kafkaGo.Message) error {
+			carrier := propagation.HeaderCarrier{}
+			var eventType, correlationID string
+			for _, h := range m.Headers {
+				carrier[h.Key] = []string{string(h.Value)}
+				if h.Key == "event_type" {
+					eventType = string(h.Value)
+				}
+				if h.Key == "correlation_trace_id" {
+					correlationID = string(h.Value)
+				}
 			}
-			if h.Key == "correlation_trace_id" {
-				correlationID = string(h.Value)
+
+			msgCtx := propagator.Extract(ctx, carrier)
+			var span trace.Span
+			if telemetry.Tracer != nil {
+				msgCtx, span = telemetry.Tracer.Start(msgCtx, "KafkaConsumer: "+eventType,
+					trace.WithSpanKind(trace.SpanKindConsumer),
+				)
+				defer span.End()
 			}
-		}
 
-		msgCtx := propagator.Extract(ctx, carrier)
-		var span trace.Span
-		if telemetry.Tracer != nil {
-			msgCtx, span = telemetry.Tracer.Start(msgCtx, "KafkaConsumer: "+eventType,
-				trace.WithSpanKind(trace.SpanKindConsumer),
+			var payload map[string]interface{}
+			if err := json.Unmarshal(m.Value, &payload); err != nil {
+				return errors.New("malformed json payload: poison pill")
+			}
+
+			slog.Info("Processed Domain Event from Kafka 7.8.0",
+				"topic", m.Topic,
+				"partition", m.Partition,
+				"offset", m.Offset,
+				"event_key", string(m.Key),
+				"event_type", eventType,
+				"correlation_id", correlationID,
+				"payload", payload,
 			)
-		}
 
-		var payload map[string]interface{}
-		_ = json.Unmarshal(msg.Value, &payload)
+			// Business asynchronous notifications
+			switch eventType {
+			case "StayCreated":
+				slog.Info("[Notification] Sent VIP reservation confirmation email and SMS voucher",
+					"guest", payload["guest_name"],
+					"email", payload["guest_email"],
+					"stay_id", payload["stay_id"],
+				)
+			case "GuestCheckedOut":
+				slog.Info("[Notification] Dispatched Housekeeping alert to cleaning team for room turnover",
+					"room_id", payload["room_id"],
+					"stay_id", payload["stay_id"],
+				)
+			case "StayCancelled":
+				slog.Info("[Notification] Processed reservation cancellation and released hold",
+					"stay_id", payload["stay_id"],
+				)
+			}
 
-		slog.Info("Received Domain Event from Kafka 7.8.0",
-			"topic", msg.Topic,
-			"partition", msg.Partition,
-			"offset", msg.Offset,
-			"event_key", string(msg.Key),
-			"event_type", eventType,
-			"correlation_id", correlationID,
-			"payload", payload,
-		)
-
-		// Simulate business asynchronous notification logic
-		switch eventType {
-		case "StayCreated":
-			slog.Info("[Notification] Sent VIP reservation confirmation email and SMS voucher",
-				"guest", payload["guest_name"],
-				"email", payload["guest_email"],
-				"stay_id", payload["stay_id"],
-			)
-		case "GuestCheckedOut":
-			slog.Info("[Notification] Dispatched Housekeeping alert to cleaning team for room turnover",
-				"room_id", payload["room_id"],
-				"stay_id", payload["stay_id"],
-			)
-		case "StayCancelled":
-			slog.Info("[Notification] Processed reservation cancellation and released hold",
-				"stay_id", payload["stay_id"],
-			)
-		}
-
-		if span != nil {
-			span.End()
-		}
+			return nil
+		})
 	}
 }

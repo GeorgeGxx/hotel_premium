@@ -26,6 +26,7 @@ import {
   checkOutStay,
   updateRoomStatus,
   updateRoomPrice,
+  subscribeToLiveEvents,
 } from './services/api';
 import { CheckCircle2, DollarSign, ExternalLink, ShieldCheck } from 'lucide-react';
 
@@ -73,6 +74,23 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Real-Time Server-Sent Events (SSE) listener
+    const unsubscribe = subscribeToLiveEvents((eventType, data) => {
+      if (eventType === 'room_updated' && data?.room_id) {
+        setRooms((prev) =>
+          prev.map((r) => (r.id === data.room_id ? { ...r, status: data.status } : r))
+        );
+        showToast(`Real-time update: Room status synchronized (${data.status})`);
+      } else if (eventType === 'stay_created' && data?.id) {
+        setStays((prev) => [data, ...prev.filter((s) => s.id !== data.id)]);
+        showToast(`Real-time update: VIP reservation confirmed for ${data.guest_name}`);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [loadData]);
 
   const showToast = (msg: string) => {

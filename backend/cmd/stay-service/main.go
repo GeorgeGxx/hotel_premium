@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hotelpremium/backend/internal/application/saga"
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
 	infraHttp "github.com/hotelpremium/backend/internal/infrastructure/http"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
@@ -22,7 +23,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting Stay & Reservations Service (Microservice) with Go 1.26, Gin v1.12.0 and GORM v1.31.2...")
+	slog.Info("Starting Stay & Reservations Service (Microservice) with Go 1.26, Gin v1.12.0, GORM v1.31.2 & Saga Orchestrator...")
 
 	cfg := config.Load()
 	port := os.Getenv("STAY_SERVICE_PORT")
@@ -64,9 +65,22 @@ func main() {
 		defer dbPool.Close()
 	}
 
-	// Initialize GORM Stay Repository and Handler
+	// Initialize Repositories
 	stayRepo := postgres.NewGormStayRepository(gormDB)
+	roomRepo := postgres.NewGormRoomRepository(gormDB)
+	billingRepo := postgres.NewGormBillingRepository(gormDB)
+	auditRepo := postgres.NewAuditRepository(gormDB)
+
 	stayHandler := handler.NewStayHandler(stayRepo)
+
+	// Saga Orchestrator for distributed booking with compensating transactions
+	sagaOrchestrator := saga.NewBookingSagaOrchestrator(
+		roomRepo,
+		stayRepo,
+		billingRepo,
+		auditRepo,
+		infraHttp.GlobalSSEHub.Broadcast,
+	)
 
 	// Kafka KRaft Transactional Outbox Publisher
 	if dbPool != nil {
@@ -74,8 +88,8 @@ func main() {
 		go outboxPublisher.Start(ctx)
 	}
 
-	// Gin v1.12.0 Engine with Tracing, Metrics and Slog Middleware
-	ginEngine := infraHttp.NewGinStayEngine(stayHandler)
+	// Gin v1.12.0 Engine with Tracing, Metrics, SSE and Saga Orchestrator
+	ginEngine := infraHttp.NewGinStayEngine(stayHandler, sagaOrchestrator)
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -86,7 +100,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("Stay Service listening with Gin v1.12.0", "port", port, "env", cfg.AppEnv)
+		slog.Info("Stay Service listening with Gin v1.12.0 & Saga", "port", port, "env", cfg.AppEnv)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Stay Service fatal error", "error", err)
 			os.Exit(1)

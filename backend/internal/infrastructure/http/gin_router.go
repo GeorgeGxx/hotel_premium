@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hotelpremium/backend/internal/application/saga"
+	"github.com/hotelpremium/backend/internal/domain/stay"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -82,7 +84,7 @@ func GinCORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -93,7 +95,7 @@ func GinCORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-// NewGinBaseEngine creates a standardized Gin v1.12.0 engine with production middlewares
+// NewGinBaseEngine creates a standardized Gin v1.12.0 engine with production middlewares and SSE live feed
 func NewGinBaseEngine(serviceName string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
@@ -106,6 +108,9 @@ func NewGinBaseEngine(serviceName string) *gin.Engine {
 	// System & Observability endpoints
 	engine.GET("/api/v1/health", GinAdapter(handler.HealthCheck))
 	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Server-Sent Events (SSE) Live Feed for real-time front desk updates
+	engine.GET("/api/v1/events/live", GlobalSSEHub.Handler())
 
 	return engine
 }
@@ -120,15 +125,16 @@ func NewGinRoomEngine(roomHandler *handler.RoomHandler) *gin.Engine {
 			rooms.GET("", GinAdapter(roomHandler.ListRooms))
 			rooms.GET("/:id", GinAdapter(roomHandler.GetRoomByID))
 			rooms.PATCH("/:id/status", GinAdapter(roomHandler.UpdateRoomStatus))
-			rooms.PATCH("/:id/price", GinAdapter(roomHandler.UpdateRoomPrice))
+			// Admin-only price update protected by Zero-Trust RBAC
+			rooms.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(roomHandler.UpdateRoomPrice))
 		}
 	}
 
 	return engine
 }
 
-// NewGinStayEngine builds the Gin v1.12.0 router for stay-service
-func NewGinStayEngine(stayHandler *handler.StayHandler) *gin.Engine {
+// NewGinStayEngine builds the Gin v1.12.0 router for stay-service with Saga Orchestrator support
+func NewGinStayEngine(stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator) *gin.Engine {
 	engine := NewGinBaseEngine("stay-service")
 
 	if stayHandler != nil {
@@ -143,6 +149,30 @@ func NewGinStayEngine(stayHandler *handler.StayHandler) *gin.Engine {
 			stays.PATCH("/:id/cancel", GinAdapter(stayHandler.CancelStay))
 			stays.DELETE("/:id", GinAdapter(stayHandler.CancelStay))
 			stays.POST("/:id/check-out", GinAdapter(stayHandler.CheckOutStay))
+
+			// Distributed Saga Booking endpoint with automated compensating rollbacks
+			if sagaOrchestrator != nil {
+				stays.POST("/saga-booking", func(c *gin.Context) {
+					var input stay.CreateStayInput
+					if err := c.ShouldBindJSON(&input); err != nil {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "invalid saga booking payload"})
+						return
+					}
+
+					userRole := c.GetString("user_role")
+					if userRole == "" {
+						userRole = RoleUser
+					}
+
+					result, err := sagaOrchestrator.Execute(c.Request.Context(), input, userRole)
+					if err != nil {
+						c.JSON(http.StatusConflict, result)
+						return
+					}
+
+					c.JSON(http.StatusCreated, result)
+				})
+			}
 		}
 	}
 
@@ -159,8 +189,9 @@ func NewGinBillingEngine(billingHandler *handler.BillingHandler) *gin.Engine {
 			billingGroup.GET("/products", GinAdapter(billingHandler.ListProducts))
 			billingGroup.POST("/charges", GinAdapter(billingHandler.AddStayCharge))
 			billingGroup.GET("/stays/:id/charges", GinAdapter(billingHandler.ListStayCharges))
-			billingGroup.POST("/shifts/open", GinAdapter(billingHandler.OpenCashShift))
-			billingGroup.POST("/shifts/:id/close", GinAdapter(billingHandler.CloseCashShift))
+			// Shift sensitive operations protected by Zero-Trust RBAC
+			billingGroup.POST("/shifts/open", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.OpenCashShift))
+			billingGroup.POST("/shifts/:id/close", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.CloseCashShift))
 		}
 	}
 
@@ -168,7 +199,7 @@ func NewGinBillingEngine(billingHandler *handler.BillingHandler) *gin.Engine {
 }
 
 // NewGinUnifiedEngine builds an all-in-one Gin engine for testing or monolithic fallback
-func NewGinUnifiedEngine(deps RouterDependencies) *gin.Engine {
+func NewGinUnifiedEngine(deps RouterDependencies, sagaOrchestrator *saga.BookingSagaOrchestrator) *gin.Engine {
 	engine := NewGinBaseEngine("hotel-unified")
 
 	if deps.RoomHandler != nil {
@@ -177,7 +208,7 @@ func NewGinUnifiedEngine(deps RouterDependencies) *gin.Engine {
 			rooms.GET("", GinAdapter(deps.RoomHandler.ListRooms))
 			rooms.GET("/:id", GinAdapter(deps.RoomHandler.GetRoomByID))
 			rooms.PATCH("/:id/status", GinAdapter(deps.RoomHandler.UpdateRoomStatus))
-			rooms.PATCH("/:id/price", GinAdapter(deps.RoomHandler.UpdateRoomPrice))
+			rooms.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(deps.RoomHandler.UpdateRoomPrice))
 		}
 	}
 
