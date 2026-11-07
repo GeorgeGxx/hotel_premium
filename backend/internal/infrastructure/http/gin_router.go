@@ -3,6 +3,7 @@ package http
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,13 +48,24 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 			path = path + "?" + raw
 		}
 
+		duration := time.Since(start)
+		route := c.FullPath()
+		if route == "" {
+			route = c.Request.URL.Path
+		}
+		if route != "/metrics" && route != "/api/v1/health" && route != "/health" {
+			statusStr := strconv.Itoa(c.Writer.Status())
+			telemetry.HTTPRequestsTotal.WithLabelValues(serviceName, c.Request.Method, route, statusStr).Inc()
+			telemetry.HTTPRequestDurationSeconds.WithLabelValues(serviceName, c.Request.Method, route).Observe(duration.Seconds())
+		}
+
 		slog.Info("Gin HTTP Request",
 			"service", serviceName,
 			"status", c.Writer.Status(),
 			"method", c.Request.Method,
 			"path", path,
 			"client_ip", c.ClientIP(),
-			"latency_ms", time.Since(start).Milliseconds(),
+			"latency_ms", duration.Milliseconds(),
 			"trace_id", traceID,
 		)
 	}

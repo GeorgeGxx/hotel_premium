@@ -4,32 +4,95 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "SRE & Tech Infrastructure",
+      "tooltip": "Switch to Technical & SRE Observability Dashboard",
+      "type": "link",
+      "url": "/d/hotel-tech-sre"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Hotel Premium Front-Desk & Guest Portal",
+      "tooltip": "Open Hotel Premium Web Application",
+      "type": "link",
+      "url": "http://localhost:5173"
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Executive Financial KPIs (USD)",
+      "title": "Executive USALI Financial & Occupancy KPIs (USD)",
       "type": "row"
     },
     {
       "id": 2,
-      "title": "Average Daily Rate (ADR)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "title": "Physical Occupancy Rate",
+      "description": "Real-time ratio of occupied rooms to total physical inventory.",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "avg(hotel_revenue_adr_usd) or vector(145.50)",
+          "expr": "max(hotel_occupancy_rate_percent) or vector(66.7)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "mappings": [],
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "orange", "value": null },
+              { "color": "green", "value": 50 },
+              { "color": "super-light-yellow", "value": 85 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 3,
+      "title": "Average Daily Rate (ADR)",
+      "description": "Average rental revenue earned for an occupied room per day in USD.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(hotel_revenue_adr_usd) or vector(145.50)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -49,20 +112,22 @@
       }
     },
     {
-      "id": 3,
-      "title": "Revenue Per Available Room (RevPAR)",
+      "id": 4,
+      "title": "RevPAR (Rooms Only)",
+      "description": "Revenue Per Available Room (ADR * Occupancy Rate) in USD.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "avg(hotel_revenue_revpar_usd) or vector(112.75)",
+          "expr": "max(hotel_revenue_revpar_usd) or vector(112.75)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -82,52 +147,92 @@
       }
     },
     {
-      "id": 4,
-      "title": "Average Length of Stay (LoS)",
+      "id": 5,
+      "title": "TRevPAR (Total RevPAR)",
+      "description": "Total Revenue Per Available Room including Spa, Minibar, Dining & Limousine POS.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "avg(hotel_kpi_los_nights) or vector(2.8)",
+          "expr": "max(hotel_revenue_trevpar_usd) or vector(138.40)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "blue", "value": null }
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 120 }
             ]
           },
-          "unit": "dthms"
+          "unit": "currencyUSD"
         }
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
       }
     },
     {
-      "id": 5,
-      "title": "Cancellation Rate (Monthly)",
+      "id": 6,
+      "title": "Average Length of Stay (LoS)",
+      "description": "Average number of nights per reservation across active and upcoming bookings.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "avg(hotel_kpi_cancellation_rate) or vector(4.2)",
+          "expr": "max(hotel_kpi_los_nights) or vector(2.8)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 2.5 }
+            ]
+          },
+          "unit": " nights"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Cancellation Rate (Monthly)",
+      "description": "Percentage of reservations cancelled relative to total bookings.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(hotel_kpi_cancellation_rate) or vector(4.2)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -149,22 +254,165 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
-      "id": 6,
-      "title": "Revenue Velocity & Booking Trends",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 8,
+      "title": "Live Room Rack Inventory, Reservation Funnel & Cash Flow",
       "type": "row"
     },
     {
-      "id": 7,
-      "title": "Gross Daily Revenue Trajectory (USD)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 6 },
+      "id": 9,
+      "title": "Physical Room Rack Inventory by Status",
+      "description": "Live operational status of suites synchronized with PostgreSQL 18.",
+      "type": "bargauge",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(hotel_revenue_total_usd[5m])) * 86400 or vector(2840)",
-          "legendFormat": "Projected Daily Revenue",
+          "expr": "max by (status) (hotel_rooms_status_total)",
+          "legendFormat": "{{status}}",
           "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "min": 0,
+          "max": 10,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 16,
+        "minVizWidth": 75,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Guest Stay & Reservation Lifecycle Funnel",
+      "description": "Distribution of stays across RESERVED, ACTIVE, CHECKED_OUT, and CANCELLED states.",
+      "type": "bargauge",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max by (status) (hotel_stays_status_total)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "min": 0,
+          "max": 15,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 16,
+        "minVizWidth": 75,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 11,
+      "title": "Folio Cash Flow & Ancillary POS Breakdown (USD)",
+      "description": "Comparison of collected guest deposits, POS/Concierge add-ons, and pending checkout balances.",
+      "type": "bargauge",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(hotel_folio_deposits_collected_usd) or vector(16450)",
+          "legendFormat": "Deposits Collected (Paid)",
+          "refId": "A"
+        },
+        {
+          "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+          "legendFormat": "Concierge & POS Ancillary",
+          "refId": "B"
+        },
+        {
+          "expr": "max(hotel_folio_balance_pending_usd) or vector(7350)",
+          "legendFormat": "Pending Folio Receivables",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "min": 0,
+          "max": 25000,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 5000 },
+              { "color": "super-light-yellow", "value": 15000 }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "displayMode": "lcd",
+        "minVizHeight": 16,
+        "minVizWidth": 75,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 12,
+      "title": "Revenue Velocity & Suite Category Performance (USD)",
+      "type": "row"
+    },
+    {
+      "id": 13,
+      "title": "Gross Daily Revenue & Ancillary Trajectory (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 15, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (category) (hotel_revenue_by_category_usd)",
+          "legendFormat": "{{category}} Revenue",
+          "refId": "A"
+        },
+        {
+          "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+          "legendFormat": "Concierge & Spa Ancillary",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -173,21 +421,22 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 15
+            "fillOpacity": 18,
+            "gradientMode": "opacity"
           },
           "unit": "currencyUSD"
         }
       }
     },
     {
-      "id": 8,
-      "title": "Revenue Distribution by Room Category",
+      "id": 14,
+      "title": "Revenue Share by Suite Category (USD)",
       "type": "piechart",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "hotel_revenue_by_category_usd",
+          "expr": "max by (category) (hotel_revenue_by_category_usd)",
           "legendFormat": "{{category}}",
           "refId": "A"
         }
@@ -195,7 +444,7 @@
       "options": {
         "pieType": "donut",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "legend": { "displayMode": "table", "placement": "bottom", "values": ["percent", "value"] },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["percent", "value"] },
         "tooltip": { "mode": "single", "sort": "none" }
       },
       "fieldConfig": {
@@ -207,11 +456,11 @@
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["business", "hotel-premium", "revenue", "usd"],
-  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["business", "hotel-premium", "revenue", "usd", "usali"],
+  "time": { "from": "now-1h", "to": "now" },
   "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
   "timezone": "browser",
   "title": "Hotel Premium - Business & Revenue Intelligence (USD)",
   "uid": "hotel-business-kpis",
-  "version": 2
+  "version": 3
 }

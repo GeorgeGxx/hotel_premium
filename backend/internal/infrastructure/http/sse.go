@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 )
 
 type SSEMessage struct {
@@ -43,8 +44,10 @@ func (h *SSEHub) run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+			total := len(h.clients)
 			h.mu.Unlock()
-			slog.Debug("SSE client connected", "total_clients", len(h.clients))
+			telemetry.SSEActiveClients.Set(float64(total))
+			slog.Debug("SSE client connected", "total_clients", total)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -52,10 +55,13 @@ func (h *SSEHub) run() {
 				delete(h.clients, client)
 				close(client)
 			}
+			total := len(h.clients)
 			h.mu.Unlock()
-			slog.Debug("SSE client disconnected", "total_clients", len(h.clients))
+			telemetry.SSEActiveClients.Set(float64(total))
+			slog.Debug("SSE client disconnected", "total_clients", total)
 
 		case msg := <-h.broadcast:
+			telemetry.SSEBroadcastsTotal.WithLabelValues(msg.Event).Inc()
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
