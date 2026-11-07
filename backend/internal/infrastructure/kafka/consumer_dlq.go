@@ -16,7 +16,7 @@ var (
 	dlqCounter = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "kafka_messages_dlq_total",
-			Help: "Total number of poison pill messages routed to Dead Letter Queue in Kafka 7.8.0",
+			Help: "Total number of poison pill messages routed to Dead Letter Queue in Kafka 8.3.2",
 		},
 		[]string{"original_topic", "dlq_topic", "reason"},
 	)
@@ -45,6 +45,7 @@ func NewDLQManager(bootstrapServers string, baseTopic string, maxRetries int, ba
 		Balancer:     &kafkaGo.LeastBytes{},
 		BatchSize:    10,
 		BatchTimeout: 10 * time.Millisecond,
+		Compression:  kafkaGo.Lz4,
 		RequiredAcks: kafkaGo.RequireOne,
 	}
 

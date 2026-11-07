@@ -216,7 +216,9 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 		if status == "RESERVED" {
 			roomStatus = "AVAILABLE"
 		}
-		_ = tx.Exec("UPDATE rooms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomStatus, input.RoomID).Error
+		if err := tx.Exec("UPDATE rooms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomStatus, input.RoomID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to update room status: %w", err)
+		}
 
 		// 5. Outbox Event (Transactional Outbox Pattern)
 		var traceID string
@@ -226,23 +228,25 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 		}
 
 		payloadBytes, _ := json.Marshal(map[string]interface{}{
-			"stay_id":         stayID.String(),
-			"room_id":         input.RoomID.String(),
-			"guest_name":      input.GuestName,
-			"guest_email":     input.GuestEmail,
-			"status":          status,
-			"check_in":        input.CheckInDate,
-			"check_out":       input.CheckOutDate,
-			"total_amount":    totalAmount,
-			"payment_status":  paymentStatus,
-			"action":          "CREATED",
-			"timestamp":       time.Now().UTC(),
+			"stay_id":        stayID.String(),
+			"room_id":        input.RoomID.String(),
+			"guest_name":     input.GuestName,
+			"guest_email":    input.GuestEmail,
+			"status":         status,
+			"check_in":       input.CheckInDate,
+			"check_out":      input.CheckOutDate,
+			"total_amount":   totalAmount,
+			"payment_status": paymentStatus,
+			"action":         "CREATED",
+			"timestamp":      time.Now().UTC(),
 		})
 
-		_ = tx.Exec(`
+		if err := tx.Exec(`
 			INSERT INTO stay_outbox_events (id, aggregate_type, aggregate_id, event_type, payload, trace_id, status)
 			VALUES (?, 'STAY', ?, 'STAY_CREATED', ?, ?, 'PENDING')
-		`, uuid.New(), stayID, string(payloadBytes), traceID).Error
+		`, uuid.New(), stayID, string(payloadBytes), traceID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to insert stay outbox event: %w", err)
+		}
 
 		// 6. Fetch created Stay Details
 		query := `
@@ -362,7 +366,7 @@ func (r *GormStayRepository) Cancel(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil {
+		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
 		}
 
@@ -370,7 +374,28 @@ func (r *GormStayRepository) Cancel(ctx context.Context, id uuid.UUID) error {
 			return fmt.Errorf("gorm: failed to cancel stay: %w", err)
 		}
 
-		_ = tx.Exec("UPDATE rooms SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomID).Error
+		if err := tx.Exec("UPDATE rooms SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to release room on cancel: %w", err)
+		}
+
+		var traceID string
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			traceID = span.SpanContext().TraceID().String()
+		}
+		payloadBytes, _ := json.Marshal(map[string]interface{}{
+			"stay_id":   id.String(),
+			"room_id":   roomID.String(),
+			"status":    "CANCELLED",
+			"action":    "CANCELLED",
+			"timestamp": time.Now().UTC(),
+		})
+		if err := tx.Exec(`
+			INSERT INTO stay_outbox_events (id, aggregate_type, aggregate_id, event_type, payload, trace_id, status)
+			VALUES (?, 'STAY', ?, 'STAY_CANCELLED', ?, ?, 'PENDING')
+		`, uuid.New(), id, string(payloadBytes), traceID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to insert stay cancel outbox event: %w", err)
+		}
+
 		return nil
 	})
 }
@@ -382,7 +407,7 @@ func (r *GormStayRepository) CheckOut(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil {
+		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
 		}
 
@@ -390,7 +415,28 @@ func (r *GormStayRepository) CheckOut(ctx context.Context, id uuid.UUID) error {
 			return fmt.Errorf("gorm: failed to checkout stay: %w", err)
 		}
 
-		_ = tx.Exec("UPDATE rooms SET status = 'DIRTY', updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomID).Error
+		if err := tx.Exec("UPDATE rooms SET status = 'DIRTY', updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to mark room dirty on checkout: %w", err)
+		}
+
+		var traceID string
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			traceID = span.SpanContext().TraceID().String()
+		}
+		payloadBytes, _ := json.Marshal(map[string]interface{}{
+			"stay_id":   id.String(),
+			"room_id":   roomID.String(),
+			"status":    "CHECKED_OUT",
+			"action":    "CHECKED_OUT",
+			"timestamp": time.Now().UTC(),
+		})
+		if err := tx.Exec(`
+			INSERT INTO stay_outbox_events (id, aggregate_type, aggregate_id, event_type, payload, trace_id, status)
+			VALUES (?, 'STAY', ?, 'GUEST_CHECKED_OUT', ?, ?, 'PENDING')
+		`, uuid.New(), id, string(payloadBytes), traceID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to insert checkout outbox event: %w", err)
+		}
+
 		return nil
 	})
 }

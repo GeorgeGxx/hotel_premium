@@ -54,7 +54,7 @@ func Load() *Config {
 		KafkaBootstrapServers: getEnv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092"),
 		KafkaStayTopic:        getEnv("KAFKA_STAY_TOPIC", "hotel.stays.lifecycle.v1"),
 		VaultAddr:             getEnv("VAULT_ADDR", "http://vault:8200"),
-		VaultToken:            getEnv("VAULT_TOKEN", "hotel_vault_dev_root_token_2026"),
+		VaultToken:            getEnv("VAULT_TOKEN", "root"),
 	}
 }
 

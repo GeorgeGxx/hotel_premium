@@ -253,6 +253,14 @@ func (r *GormBillingRepository) AddCharge(ctx context.Context, charge *billing.S
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		totalPrice := float64(charge.Quantity) * charge.UnitPrice
+		if charge.ID == uuid.Nil {
+			charge.ID = uuid.New()
+		}
+		if charge.CreatedAt.IsZero() {
+			charge.CreatedAt = time.Now().UTC()
+		}
+		charge.TotalPrice = totalPrice
+
 		m := StayChargeModel{
 			ID:          charge.ID,
 			StayID:      charge.StayID,
@@ -269,11 +277,15 @@ func (r *GormBillingRepository) AddCharge(ctx context.Context, charge *billing.S
 		}
 
 		// Update total_amount on stay
-		_ = tx.Exec("UPDATE stays SET total_amount = total_amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", totalPrice, charge.StayID).Error
+		if err := tx.Exec("UPDATE stays SET total_amount = total_amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", totalPrice, charge.StayID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to update stay total amount: %w", err)
+		}
 
 		// Deduct stock if product specified
 		if charge.ProductID != nil && *charge.ProductID != uuid.Nil {
-			_ = tx.Exec("UPDATE products SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?", charge.Quantity, *charge.ProductID).Error
+			if err := tx.Exec("UPDATE products SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?", charge.Quantity, *charge.ProductID).Error; err != nil {
+				return fmt.Errorf("gorm: failed to deduct product stock: %w", err)
+			}
 		}
 
 		return nil

@@ -8,15 +8,22 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hotelpremium/backend/internal/domain/room"
+	infraRedis "github.com/hotelpremium/backend/internal/infrastructure/redis"
 	"gorm.io/gorm"
 )
 
 type GormRoomRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *infraRedis.CacheManager
 }
 
 func NewGormRoomRepository(db *gorm.DB) *GormRoomRepository {
 	return &GormRoomRepository{db: db}
+}
+
+func (r *GormRoomRepository) WithCache(cache *infraRedis.CacheManager) *GormRoomRepository {
+	r.cache = cache
+	return r
 }
 
 func (r *GormRoomRepository) FindAll(ctx context.Context) ([]*room.Room, error) {
@@ -24,43 +31,57 @@ func (r *GormRoomRepository) FindAll(ctx context.Context) ([]*room.Room, error) 
 		return nil, errors.New("database connection unavailable")
 	}
 
-	var models []RoomModel
-	err := r.db.WithContext(ctx).
-		Preload("Category").
-		Order("floor ASC, number ASC").
-		Find(&models).Error
+	fetch := func() (interface{}, error) {
+		var models []RoomModel
+		err := r.db.WithContext(ctx).
+			Preload("Category").
+			Order("floor ASC, number ASC").
+			Find(&models).Error
 
+		if err != nil {
+			return nil, fmt.Errorf("gorm: failed to query rooms: %w", err)
+		}
+
+		rooms := make([]*room.Room, len(models))
+		for i, m := range models {
+			categoryName := ""
+			basePrice := 0.0
+			capacity := 2
+			if m.Category != nil {
+				categoryName = m.Category.Name
+				basePrice = m.Category.BasePrice
+				capacity = m.Category.Capacity
+			}
+
+			rooms[i] = &room.Room{
+				ID:           m.ID,
+				Number:       m.Number,
+				CategoryID:   m.CategoryID,
+				CategoryName: categoryName,
+				Floor:        m.Floor,
+				Status:       room.Status(m.Status),
+				BasePrice:    basePrice,
+				Capacity:     capacity,
+				Notes:        m.Notes,
+				CreatedAt:    m.CreatedAt,
+				UpdatedAt:    m.UpdatedAt,
+			}
+		}
+		return rooms, nil
+	}
+
+	if r.cache != nil {
+		var cachedRooms []*room.Room
+		if err := r.cache.GetOrFetch(ctx, "rooms:all", 30*time.Second, &cachedRooms, fetch); err == nil {
+			return cachedRooms, nil
+		}
+	}
+
+	res, err := fetch()
 	if err != nil {
-		return nil, fmt.Errorf("gorm: failed to query rooms: %w", err)
+		return nil, err
 	}
-
-	rooms := make([]*room.Room, len(models))
-	for i, m := range models {
-		categoryName := ""
-		basePrice := 0.0
-		capacity := 2
-		if m.Category != nil {
-			categoryName = m.Category.Name
-			basePrice = m.Category.BasePrice
-			capacity = m.Category.Capacity
-		}
-
-		rooms[i] = &room.Room{
-			ID:           m.ID,
-			Number:       m.Number,
-			CategoryID:   m.CategoryID,
-			CategoryName: categoryName,
-			Floor:        m.Floor,
-			Status:       room.Status(m.Status),
-			BasePrice:    basePrice,
-			Capacity:     capacity,
-			Notes:        m.Notes,
-			CreatedAt:    m.CreatedAt,
-			UpdatedAt:    m.UpdatedAt,
-		}
-	}
-
-	return rooms, nil
+	return res.([]*room.Room), nil
 }
 
 func (r *GormRoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*room.Room, error) {
@@ -161,7 +182,13 @@ func (r *GormRoomRepository) Save(ctx context.Context, rm *room.Room) error {
 		UpdatedAt:  rm.UpdatedAt,
 	}
 
-	return r.db.WithContext(ctx).Save(&m).Error
+	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
+		return err
+	}
+	if r.cache != nil {
+		_ = r.cache.Invalidate(ctx, "rooms:all", "rooms:id:"+rm.ID.String())
+	}
+	return nil
 }
 
 func (r *GormRoomRepository) Update(ctx context.Context, rm *room.Room) error {
@@ -169,7 +196,7 @@ func (r *GormRoomRepository) Update(ctx context.Context, rm *room.Room) error {
 		return errors.New("database connection unavailable")
 	}
 
-	return r.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Model(&RoomModel{}).
 		Where("id = ?", rm.ID).
 		Updates(map[string]interface{}{
@@ -180,6 +207,10 @@ func (r *GormRoomRepository) Update(ctx context.Context, rm *room.Room) error {
 			"notes":       rm.Notes,
 			"updated_at":  time.Now().UTC(),
 		}).Error
+	if err == nil && r.cache != nil {
+		_ = r.cache.Invalidate(ctx, "rooms:all", "rooms:id:"+rm.ID.String())
+	}
+	return err
 }
 
 func (r *GormRoomRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status room.Status) error {
@@ -201,6 +232,9 @@ func (r *GormRoomRepository) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 	if res.RowsAffected == 0 {
 		return errors.New("room not found")
 	}
+	if r.cache != nil {
+		_ = r.cache.Invalidate(ctx, "rooms:all", "rooms:id:"+id.String())
+	}
 
 	return nil
 }
@@ -216,8 +250,12 @@ func (r *GormRoomRepository) UpdatePrice(ctx context.Context, id uuid.UUID, pric
 		return fmt.Errorf("gorm: failed to fetch room for price update: %w", err)
 	}
 
-	return r.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Model(&RoomCategoryModel{}).
 		Where("id = ?", rm.CategoryID).
 		Update("base_price", price).Error
+	if err == nil && r.cache != nil {
+		_ = r.cache.Invalidate(ctx, "rooms:all", "rooms:id:"+id.String())
+	}
+	return err
 }

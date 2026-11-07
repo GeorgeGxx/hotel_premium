@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,7 +26,13 @@ func main() {
 	slog.Info("Starting Room Service (Microservice) with Go 1.26, Gin v1.12.0 and GORM v1.31.2...")
 
 	cfg := config.Load()
-	port := os.Getenv("ROOM_SERVICE_PORT")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = os.Getenv("ROOM_SERVICE_PORT")
+	}
+	if idx := strings.LastIndex(port, ":"); idx != -1 {
+		port = port[idx+1:]
+	}
 	if port == "" {
 		port = "8081"
 	}
@@ -34,6 +41,7 @@ func main() {
 	defer cancel()
 
 	// OpenTelemetry Tracing via Tempo / Alloy
+	telemetry.InitBusinessMetrics()
 	shutdownTracer, err := telemetry.InitTracer(ctx, "room-service", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {
@@ -61,8 +69,8 @@ func main() {
 		}
 	}
 
-	// Initialize GORM Room Repository and Handler
-	roomRepo := postgres.NewGormRoomRepository(gormDB)
+	// Initialize GORM Room Repository (with Redis singleflight CacheManager) and Handler
+	roomRepo := postgres.NewGormRoomRepository(gormDB).WithCache(redis.NewCacheManager(redisClient))
 	roomHandler := handler.NewRoomHandler(roomRepo)
 
 	// Gin v1.12.0 Engine with Tracing, Metrics and Slog Middleware

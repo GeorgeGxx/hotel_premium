@@ -26,6 +26,7 @@ func NewOutboxPublisher(pool *pgxpool.Pool, bootstrapServers string, stayTopic s
 		Balancer:     &kafkaGo.LeastBytes{},
 		BatchSize:    100,
 		BatchTimeout: 10 * time.Millisecond,
+		Compression:  kafkaGo.Lz4,
 		Async:        false,
 		RequiredAcks: kafkaGo.RequireOne,
 	}
@@ -168,7 +169,7 @@ func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
 		return
 	}
 
-	slog.Info("Successfully published events to Kafka 7.8.0 KRaft",
+	slog.Info("Successfully published events to Kafka 8.3.2 KRaft",
 		"topic", p.stayTopic,
 		"published_count", len(successfulIDs),
 	)

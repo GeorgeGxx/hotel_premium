@@ -4,15 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
+	"github.com/hotelpremium/backend/internal/infrastructure/http/swagger"
 	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
+	"github.com/hotelpremium/backend/internal/infrastructure/redis"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
@@ -25,10 +30,16 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting Notification Worker (Kafka 7.8.0 Consumer with DLQ & Exponential Backoff)...")
+	slog.Info("Starting Notification Worker (Kafka 8.3.2 Consumer with DLQ, Redis Deduplication & Exponential Backoff)...")
 
 	cfg := config.Load()
-	port := os.Getenv("NOTIFICATION_WORKER_PORT")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = os.Getenv("NOTIFICATION_WORKER_PORT")
+	}
+	if idx := strings.LastIndex(port, ":"); idx != -1 {
+		port = port[idx+1:]
+	}
 	if port == "" {
 		port = "8084"
 	}
@@ -46,22 +57,39 @@ func main() {
 		}()
 	}
 
+	// 1b. Redis Client for Idempotent Event Deduplication
+	var processedEvents atomic.Uint64
+	var deduplicatedEvents atomic.Uint64
+	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
+	if err == nil && redisClient != nil {
+		defer redisClient.Close()
+	}
+
 	// 2. Metrics & Health Endpoint for Prometheus & Observability Mesh
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		if telemetry.Tracer != nil {
-			_, span := telemetry.Tracer.Start(r.Context(), "NotificationWorkerHealth")
-			defer span.End()
-		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "UP",
 			"service": "notification-worker",
+			"broker":  "Apache Kafka 8.3.2 (KRaft)",
 			"topic":   cfg.KafkaStayTopic,
 			"dlq":     cfg.KafkaStayTopic + ".DLQ",
 		})
 	})
+	mux.HandleFunc("GET /api/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"service":             "notification-worker",
+			"status":              "ACTIVE",
+			"broker_version":      "8.3.2",
+			"topic":               cfg.KafkaStayTopic,
+			"processed_events":    processedEvents.Load(),
+			"deduplicated_events": deduplicatedEvents.Load(),
+		})
+	})
 	mux.Handle("GET /metrics", promhttp.Handler())
+	swagger.RegisterSwaggerUIMux(mux, "notification-worker")
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -91,7 +119,7 @@ func main() {
 	})
 	defer reader.Close()
 
-	slog.Info("Notification Worker connected to Kafka 7.8.0 with DLQ",
+	slog.Info("Notification Worker connected to Kafka 8.3.2 with DLQ",
 		"broker", cfg.KafkaBootstrapServers,
 		"topic", cfg.KafkaStayTopic,
 		"dlq_topic", cfg.KafkaStayTopic+".DLQ",
@@ -144,7 +172,22 @@ func main() {
 				return errors.New("malformed json payload: poison pill")
 			}
 
-			slog.Info("Processed Domain Event from Kafka 7.8.0",
+			// Idempotent Event Deduplication via Redis (24h TTL)
+			if redisClient != nil {
+				dedupKey := fmt.Sprintf("notif:dedup:%s:%s:%d:%d", eventType, string(m.Key), m.Partition, m.Offset)
+				acquired, rErr := redisClient.SetNX(msgCtx, dedupKey, "1", 24*time.Hour).Result()
+				if rErr == nil && !acquired {
+					deduplicatedEvents.Add(1)
+					slog.Info("Skipping duplicate Kafka 8.3.2 event (idempotency guard)",
+						"dedup_key", dedupKey,
+						"event_type", eventType,
+					)
+					return nil
+				}
+			}
+
+			processedEvents.Add(1)
+			slog.Info("Processed Domain Event from Kafka 8.3.2",
 				"topic", m.Topic,
 				"partition", m.Partition,
 				"offset", m.Offset,
@@ -154,20 +197,20 @@ func main() {
 				"payload", payload,
 			)
 
-			// Business asynchronous notifications
+			// Business asynchronous notifications (supports both canonical UPPER_SNAKE and PascalCase event types)
 			switch eventType {
-			case "StayCreated":
+			case "STAY_CREATED", "StayCreated":
 				slog.Info("[Notification] Sent VIP reservation confirmation email and SMS voucher",
 					"guest", payload["guest_name"],
 					"email", payload["guest_email"],
 					"stay_id", payload["stay_id"],
 				)
-			case "GuestCheckedOut":
+			case "GUEST_CHECKED_OUT", "GuestCheckedOut":
 				slog.Info("[Notification] Dispatched Housekeeping alert to cleaning team for room turnover",
 					"room_id", payload["room_id"],
 					"stay_id", payload["stay_id"],
 				)
-			case "StayCancelled":
+			case "STAY_CANCELLED", "StayCancelled":
 				slog.Info("[Notification] Processed reservation cancellation and released hold",
 					"stay_id", payload["stay_id"],
 				)

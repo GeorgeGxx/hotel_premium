@@ -7,11 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hotelpremium/backend/internal/application/saga"
-	"github.com/hotelpremium/backend/internal/domain/stay"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
+	"github.com/hotelpremium/backend/internal/infrastructure/http/swagger"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -60,7 +62,7 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 // GinTelemetryMiddleware extracts distributed tracing context and starts server spans in Tempo
 func GinTelemetryMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if telemetry.Tracer == nil {
+		if telemetry.Tracer == nil || c.Request.URL.Path == "/metrics" || c.Request.URL.Path == "/api/v1/health" || c.Request.URL.Path == "/health" {
 			c.Next()
 			return
 		}
@@ -70,7 +72,8 @@ func GinTelemetryMiddleware(serviceName string) gin.HandlerFunc {
 			spanName = serviceName + ": " + c.Request.Method + " " + c.Request.URL.Path
 		}
 
-		ctx, span := telemetry.Tracer.Start(c.Request.Context(), spanName,
+		ctx := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
+		ctx, span := telemetry.Tracer.Start(ctx, spanName,
 			trace.WithSpanKind(trace.SpanKindServer),
 		)
 		defer span.End()
@@ -80,12 +83,15 @@ func GinTelemetryMiddleware(serviceName string) gin.HandlerFunc {
 	}
 }
 
-// GinCORSMiddleware ensures unified CORS headers across all microservices
+// GinCORSMiddleware ensures unified CORS and defensive HTTP security headers across all microservices
 func GinCORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role, Idempotency-Key, X-Idempotency-Key")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role, Idempotency-Key, X-Idempotency-Key, X-Correlation-ID")
+		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+		c.Writer.Header().Set("X-Frame-Options", "DENY")
+		c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -109,6 +115,9 @@ func NewGinBaseEngine(serviceName string) *gin.Engine {
 	// System & Observability endpoints
 	engine.GET("/api/v1/health", GinAdapter(handler.HealthCheck))
 	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Interactive OpenAPI / Swagger Documentation UI
+	swagger.RegisterSwaggerUI(engine, serviceName)
 
 	// Server-Sent Events (SSE) Live Feed for real-time front desk updates
 	engine.GET("/api/v1/events/live", GlobalSSEHub.Handler())
@@ -146,15 +155,25 @@ func RegisterStayRoutes(group *gin.RouterGroup, stayHandler *handler.StayHandler
 
 	if sagaOrchestrator != nil {
 		group.POST("/saga-booking", func(c *gin.Context) {
-			var input stay.CreateStayInput
-			if err := c.ShouldBindJSON(&input); err != nil {
+			var req handler.CreateStayRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid saga booking payload"})
+				return
+			}
+
+			input, err := handler.ParseCreateStayInput(req)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 
 			userRole := c.GetString("user_role")
 			if userRole == "" {
-				userRole = RoleUser
+				if hdrRole := c.GetHeader("X-User-Role"); hdrRole != "" {
+					userRole = normalizeRole(hdrRole)
+				} else {
+					userRole = RoleUser
+				}
 			}
 
 			result, err := sagaOrchestrator.Execute(c.Request.Context(), input, userRole)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,7 +28,13 @@ func main() {
 	slog.Info("Starting Stay & Reservations Service (Microservice) with Go 1.26, Gin v1.12.0, GORM v1.31.2 & Saga Orchestrator...")
 
 	cfg := config.Load()
-	port := os.Getenv("STAY_SERVICE_PORT")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = os.Getenv("STAY_SERVICE_PORT")
+	}
+	if idx := strings.LastIndex(port, ":"); idx != -1 {
+		port = port[idx+1:]
+	}
 	if port == "" {
 		port = "8082"
 	}
@@ -36,6 +43,7 @@ func main() {
 	defer cancel()
 
 	// OpenTelemetry Tracing via Tempo / Alloy
+	telemetry.InitBusinessMetrics()
 	shutdownTracer, err := telemetry.InitTracer(ctx, "stay-service", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {

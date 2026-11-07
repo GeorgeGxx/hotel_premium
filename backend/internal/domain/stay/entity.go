@@ -66,20 +66,20 @@ type StayDetails struct {
 }
 
 type CreateStayInput struct {
-	RoomID         uuid.UUID
-	GuestName      string
-	GuestEmail     string
-	GuestPhone     string
-	DocumentType   string
-	DocumentNumber string
-	CheckInDate    time.Time
-	CheckOutDate   time.Time
-	TotalNights    int
-	NightlyRate    float64
-	DepositAmount  float64
-	Notes          string
-	Status         Status
-	RegisteredByID uuid.UUID
+	RoomID         uuid.UUID `json:"room_id"`
+	GuestName      string    `json:"guest_name"`
+	GuestEmail     string    `json:"guest_email"`
+	GuestPhone     string    `json:"guest_phone"`
+	DocumentType   string    `json:"document_type"`
+	DocumentNumber string    `json:"document_number"`
+	CheckInDate    time.Time `json:"check_in_date"`
+	CheckOutDate   time.Time `json:"check_out_date"`
+	TotalNights    int       `json:"total_nights"`
+	NightlyRate    float64   `json:"nightly_rate"`
+	DepositAmount  float64   `json:"deposit_amount"`
+	Notes          string    `json:"notes"`
+	Status         Status    `json:"status"`
+	RegisteredByID uuid.UUID `json:"registered_by_id"`
 }
 
 type UpdateStayInput struct {

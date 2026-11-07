@@ -74,17 +74,10 @@ type CreateStayRequest struct {
 	Status         string  `json:"status"` // 'RESERVED' or 'ACTIVE'
 }
 
-func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
-	var req CreateStayRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid json request payload"}`, http.StatusBadRequest)
-		return
-	}
-
+func ParseCreateStayInput(req CreateStayRequest) (stay.CreateStayInput, error) {
 	roomUUID, err := uuid.Parse(req.RoomID)
 	if err != nil {
-		http.Error(w, `{"error":"invalid room_id uuid"}`, http.StatusBadRequest)
-		return
+		return stay.CreateStayInput{}, errors.New("invalid room_id uuid")
 	}
 
 	// Parse Dates (supports YYYY-MM-DD or RFC3339)
@@ -123,7 +116,7 @@ func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
 		stStatus = stay.StatusReserved
 	}
 
-	input := stay.CreateStayInput{
+	return stay.CreateStayInput{
 		RoomID:         roomUUID,
 		GuestName:      req.GuestName,
 		GuestEmail:     req.GuestEmail,
@@ -137,6 +130,20 @@ func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
 		DepositAmount:  req.DepositAmount,
 		Notes:          req.Notes,
 		Status:         stStatus,
+	}, nil
+}
+
+func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
+	var req CreateStayRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json request payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	input, err := ParseCreateStayInput(req)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
 	}
 
 	createdStay, err := h.stayRepo.Create(r.Context(), input)

@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- HOTEL PREMIUM - MIGRATION 000002: OUTBOX PATTERN & RESERVATION EXTENSIONS
--- Enables reliable asynchronous messaging to Kafka 7.8.0 and event consistency
+-- Enables reliable asynchronous messaging to Kafka 8.3.2 and event consistency
 -- ==============================================================================
 
 CREATE TABLE IF NOT EXISTS stay_outbox_events (

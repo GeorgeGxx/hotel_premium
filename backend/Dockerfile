@@ -4,7 +4,7 @@
 # ==============================================================================
 FROM golang:1.26-alpine AS builder
 
-ARG SERVICE=api
+ARG SERVICE=room-service
 
 WORKDIR /app
 
@@ -16,6 +16,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -trimpath \
     -ldflags="-s -w -extldflags '-static'" \
     -o /app/bin/service ./cmd/${SERVICE}
 

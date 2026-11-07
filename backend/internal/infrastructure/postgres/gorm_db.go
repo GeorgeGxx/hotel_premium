@@ -112,7 +112,7 @@ type StayChargeModel struct {
 	Description string        `gorm:"type:varchar(255);not null" json:"description"`
 	Quantity    int           `gorm:"type:int;not null;default:1" json:"quantity"`
 	UnitPrice   float64       `gorm:"type:numeric(10,2);not null" json:"unit_price"`
-	TotalPrice  float64       `gorm:"type:numeric(10,2)" json:"total_price"`
+	TotalPrice  float64       `gorm:"column:total_price;type:numeric(10,2);->;<-:false" json:"total_price"`
 	CreatedAt   time.Time     `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 

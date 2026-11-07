@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	infraHttp "github.com/hotelpremium/backend/internal/infrastructure/http"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/postgres"
+	"github.com/hotelpremium/backend/internal/infrastructure/redis"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 )
 
@@ -24,7 +26,13 @@ func main() {
 	slog.Info("Starting Billing & POS Service (Microservice) with Go 1.26, Gin v1.12.0 and GORM v1.31.2...")
 
 	cfg := config.Load()
-	port := os.Getenv("BILLING_SERVICE_PORT")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = os.Getenv("BILLING_SERVICE_PORT")
+	}
+	if idx := strings.LastIndex(port, ":"); idx != -1 {
+		port = port[idx+1:]
+	}
 	if port == "" {
 		port = "8083"
 	}
@@ -33,6 +41,7 @@ func main() {
 	defer cancel()
 
 	// OpenTelemetry Tracing via Tempo / Alloy
+	telemetry.InitBusinessMetrics()
 	shutdownTracer, err := telemetry.InitTracer(ctx, "billing-service", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {
@@ -40,6 +49,12 @@ func main() {
 			defer sCancel()
 			_ = shutdownTracer(sCtx)
 		}()
+	}
+
+	// Redis 8.8.1 client for distributed Idempotency locking on Folio charges
+	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
+	if err == nil && redisClient != nil {
+		defer redisClient.Close()
 	}
 
 	// GORM v1.31.2 PostgreSQL initialization
@@ -58,8 +73,8 @@ func main() {
 	billingRepo := postgres.NewGormBillingRepository(gormDB)
 	billingHandler := handler.NewBillingHandler(billingRepo)
 
-	// Gin v1.12.0 Engine with Tracing, Metrics and Slog Middleware
-	ginEngine := infraHttp.NewGinBillingEngine(billingHandler)
+	// Gin v1.12.0 Engine with Tracing, Metrics, Idempotency and Slog Middleware
+	ginEngine := infraHttp.NewGinBillingEngine(billingHandler, redisClient)
 
 	server := &http.Server{
 		Addr:         ":" + port,
