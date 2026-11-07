@@ -1932,35 +1932,133 @@ switch ($Command) {
     }
 
     "help" {
-        Show-Banner "Hotel Premium Unified DevSecOps & SRE Platform CLI Usage"
-        Write-Host "Lifecycle & Cluster Commands:" -ForegroundColor Cyan
-        Write-Host "  .\platform-minikube.ps1 up [-Build] [-Fast]      Bootstrap Minikube 1.39.0 / K8s 1.37.0 with 6-Gate DevSecOps & Helm 4.3.1"
-        Write-Host "  .\platform-minikube.ps1 start / resume           Fast-resume cluster in <30s with Cosign provenance & tunnel self-healing"
-        Write-Host "  .\platform-minikube.ps1 down [-Destroy]          Stop cluster cleanly (or purge VM + Terraform state with -Destroy)"
-        Write-Host "  .\platform-minikube.ps1 build                    Build all Hotel Premium images via Docker Compose"
-        Write-Host "  .\platform-minikube.ps1 helm                     Deploy microservices using Helm 4.3.1 (--server-side --wait=watcher)"
-        Write-Host "  .\platform-minikube.ps1 set-tag -ImageTag <tag>  Synchronize container image tags across Helm values files"
-        Write-Host "`nNetworking & Cloudflare Quick Tunnels:" -ForegroundColor Cyan
-        Write-Host "  .\platform-minikube.ps1 tunnel / tunnels         Start/inspect self-healing localhost port-forward supervisor"
-        Write-Host "  .\platform-minikube.ps1 cloudflare -Action <act> Manage Cloudflare Quick Tunnels (start | status | restart | stop)"
-        Write-Host "  .\platform-minikube.ps1 urls                     Display all active localhost & Swagger OpenAPI URLs"
-        Write-Host "`nProgressive Delivery, Rollouts & Vault Security:" -ForegroundColor Cyan
-        Write-Host "  .\platform-minikube.ps1 rollout                  Trigger zero-downtime RollingUpdate (-ServiceName, -ImageTag)"
-        Write-Host "  .\platform-minikube.ps1 rollback                 Rollback a deployment or Helm 4.3.1 release (-ServiceName, -Revision)"
-        Write-Host "  .\platform-minikube.ps1 canary -Action <act>     Manage Istio traffic splitting (weight | promote | retire)"
-        Write-Host "  .\platform-minikube.ps1 vault -VaultAction <act> Vault v2.2.0 operations (status | seed | k8s-auth | istio-pki)"
-        Write-Host "  .\platform-minikube.ps1 security-scan / policy   Run 6 Shift-Left gates (Gitleaks, Semgrep, TFLint, Trivy, Conftest, Cosign)"
-        Write-Host "`nTesting, SRE Chaos, Diagnostics & FinOps:" -ForegroundColor Cyan
-        Write-Host "  .\platform-minikube.ps1 test                     Run Go 1.26 native microservice unit test suite"
-        Write-Host "  .\platform-minikube.ps1 smoke-test / diagnose    Run E2E HTTP smoke probes & deep LGTM/Swagger diagnostics"
-        Write-Host "  .\platform-minikube.ps1 simulate / e2e           Run full Hotel Guest Journey E2E simulation via Kong Gateway"
-        Write-Host "  .\platform-minikube.ps1 contract / performance   Run Postman/Newman API contracts & Grafana k6 SLO load tests"
-        Write-Host "  .\platform-minikube.ps1 dast                     Run OWASP ZAP dynamic security baseline scan"
-        Write-Host "  .\platform-minikube.ps1 ddos / chaos             Run edge anti-DDoS flood probe & concurrent GiST/Idempotency chaos test"
-        Write-Host "  .\platform-minikube.ps1 cost / finops-rightsize  Evaluate OpenCost AWS savings & Prometheus 7-day workload rightsizing"
-        Write-Host "  .\platform-minikube.ps1 bcdr                     Execute PostgreSQL 18 backup & PitR verification drill"
-        Write-Host "  .\platform-minikube.ps1 diagrams                 Regenerate 12-tab Draw.io architecture blueprints (docs/Diagrams.drawio)"
-        Write-Host "  .\platform-minikube.ps1 plan / apply / graph     Execute mutex-protected Terraform plan, apply, or Graphviz diagram"
+        Show-Banner "Hotel Premium Unified DevSecOps & SRE Platform CLI Quick Reference"
+        Write-Host "Usage: .\platform-minikube.ps1 <Command> [Options]`n" -ForegroundColor Yellow
+
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host " 1. CLUSTER LIFECYCLE & PLATFORM BOOTSTRAP" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 up [Options]       Full 9-stage bootstrap: 6 DevSecOps gates, build/load, Vault PKI & Helm 4.3.1"
+        Write-Host "      Options: [-Build] [-Fast] [-Install] [-InstallOpenCostPlugin] [-WithHelm] [-WithoutHelm]"
+        Write-Host "               [-WithIstio] [-WithoutIstio] [-SkipScans] [-NoTunnel] [-Cpus 8] [-MemoryMb 16384] [-DiskSize 40g]"
+        Write-Host "      Example: .\platform-minikube.ps1 up -Build"
+        Write-Host "  .\platform-minikube.ps1 start / resume     Fast-resume a stopped cluster in <30s with Cosign provenance & self-healing tunnels"
+        Write-Host "      Options: [-Fast] [-SkipScans] [-NoTunnel]"
+        Write-Host "      Example: .\platform-minikube.ps1 start"
+        Write-Host "  .\platform-minikube.ps1 down [Options]     Stop cluster cleanly (or purge VM, disk, and local state with -Destroy)"
+        Write-Host "      Options: [-Destroy]"
+        Write-Host "      Example: .\platform-minikube.ps1 down"
+        Write-Host "      Example: .\platform-minikube.ps1 down -Destroy"
+        Write-Host "  .\platform-minikube.ps1 destroy            Alias for 'down -Destroy' (purges Minikube VM + local Terraform state)"
+        Write-Host "      Example: .\platform-minikube.ps1 destroy"
+        Write-Host "  .\platform-minikube.ps1 build [Options]   Build all 5 Hotel Premium container images via Docker Compose"
+        Write-Host "      Options: [-Push]"
+        Write-Host "      Example: .\platform-minikube.ps1 build"
+        Write-Host "  .\platform-minikube.ps1 status             Inspect cluster status (pods across all namespaces, HPAs, PDBs, KEDA, and tunnels)"
+        Write-Host "  .\platform-minikube.ps1 history [Options]  Inspect rollout deployment history and revisions"
+        Write-Host "      Options: [-ServiceName <name>]"
+        Write-Host "      Example: .\platform-minikube.ps1 history -ServiceName room-service"
+        Write-Host "  .\platform-minikube.ps1 doctor / verify    Verify system prerequisites, CLI versions, virtualization, and environment"
+        Write-Host "  .\platform-minikube.ps1 tools              Display installed versions and health of all DevSecOps & Cloud tools"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 2. HELM 4.3.1 PACKAGING, ROLLOUTS & PROGRESSIVE CANARY" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 helm [Options]     Deploy/upgrade microservices using Helm 4.3.1 (--server-side --wait=watcher)"
+        Write-Host "      Options: [-Environment <dev|staging|prod>]"
+        Write-Host "      Example: .\platform-minikube.ps1 helm -Environment dev"
+        Write-Host "  .\platform-minikube.ps1 set-tag [Options]  Synchronize container image tags across Helm values files"
+        Write-Host "      Options: -ImageTag <tag> [-ServiceName <name>]"
+        Write-Host "      Example: .\platform-minikube.ps1 set-tag -ImageTag 1.1.0"
+        Write-Host "  .\platform-minikube.ps1 rollout [Options]  Trigger zero-downtime rolling update (maxSurge: 1, maxUnavailable: 0)"
+        Write-Host "      Options: -ServiceName <name> [-ImageTag <tag>]"
+        Write-Host "      Example: .\platform-minikube.ps1 rollout -ServiceName room-service -ImageTag 1.1.0"
+        Write-Host "  .\platform-minikube.ps1 rollback [Options] Rollback a deployment or Helm release to a previous revision"
+        Write-Host "      Options: -ServiceName <name> [-Revision <rev>]"
+        Write-Host "      Example: .\platform-minikube.ps1 rollback -ServiceName room-service -Revision 1"
+        Write-Host "  .\platform-minikube.ps1 canary [Options]   Manage Istio progressive canary traffic splitting (v1 vs. v2)"
+        Write-Host "      Options: -Action <weight|promote|retire> -ServiceName <name> [-V1Weight <0-100>] [-V2Weight <0-100>]"
+        Write-Host "      Example: .\platform-minikube.ps1 canary -Action weight -ServiceName room-service -V1Weight 80 -V2Weight 20"
+        Write-Host "      Example: .\platform-minikube.ps1 canary -Action promote -ServiceName room-service"
+        Write-Host "      Example: .\platform-minikube.ps1 canary -Action retire -ServiceName room-service"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 3. NETWORKING, CLOUDFLARE QUICK TUNNELS & INGRESS" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 tunnel / tunnels   Start or inspect self-healing localhost port-forward supervisor (127.0.0.1)"
+        Write-Host "  .\platform-minikube.ps1 cloudflare [Opt]   Manage public HTTPS Cloudflare Anycast Quick Tunnels (*.trycloudflare.com)"
+        Write-Host "      Options: -Action <start|status|restart|stop>"
+        Write-Host "      Example: .\platform-minikube.ps1 cloudflare -Action start"
+        Write-Host "      Example: .\platform-minikube.ps1 cloudflare -Action status"
+        Write-Host "      Example: .\platform-minikube.ps1 cloudflare -Action restart"
+        Write-Host "      Example: .\platform-minikube.ps1 cloudflare -Action stop"
+        Write-Host "  .\platform-minikube.ps1 urls               Display all active localhost & Swagger OpenAPI documentation endpoints"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 4. SECURITY, HASHICORP VAULT v2.2.0 & DEVSECOPS SHIFT-LEFT" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 security-scan      Run 6-Gate Shift-Left pipeline (Gitleaks, Semgrep, TFLint, Trivy, Conftest, Cosign)"
+        Write-Host "      Options: [-CosignImage <image>] [-CosignKey <key>]"
+        Write-Host "      Alias:   .\platform-minikube.ps1 policy"
+        Write-Host "  .\platform-minikube.ps1 vault [Options]    Advanced HashiCorp Vault v2.2.0 operations"
+        Write-Host "      Options: -VaultAction <status|k8s-auth|istio-pki|seed> [-RotateVaultPki] [-PruneLegacyVaultRole]"
+        Write-Host "               [-VaultNamespace <ns>] [-IstioNamespace <ns>] [-VaultToken <token>]"
+        Write-Host "      Example: .\platform-minikube.ps1 vault -VaultAction status"
+        Write-Host "      Example: .\platform-minikube.ps1 vault -VaultAction seed"
+        Write-Host "      Example: .\platform-minikube.ps1 vault -VaultAction k8s-auth -PruneLegacyVaultRole"
+        Write-Host "      Example: .\platform-minikube.ps1 vault -VaultAction istio-pki -RotateVaultPki"
+        Write-Host "  .\platform-minikube.ps1 secrets            Generate cryptographically secure random credentials for local/cloud environments"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 5. TESTING, SRE CHAOS, DIAGNOSTICS & FINOPS" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 test               Run Go 1.26 native microservice unit & saga race test suite"
+        Write-Host "  .\platform-minikube.ps1 smoke-test         Execute zero-downtime HTTP smoke probes against all microservices"
+        Write-Host "  .\platform-minikube.ps1 diagnose           Execute deep SRE diagnostics across LGTM observability stack & Swagger"
+        Write-Host "  .\platform-minikube.ps1 simulate [Options] Simulate full Guest Lifecycle Journey (Browse -> Book -> Charge -> Checkout)"
+        Write-Host "      Options: [-ChaosRuns <n>]"
+        Write-Host "      Example: .\platform-minikube.ps1 simulate -ChaosRuns 12"
+        Write-Host "  .\platform-minikube.ps1 ddos [Options]     Run edge anti-DDoS burst probe testing Kong Gateway rate-limit thresholds"
+        Write-Host "      Options: [-DdosUrl <url>] [-Duration <sec>] [-Workers <n>] [-Rps <n>]"
+        Write-Host "      Example: .\platform-minikube.ps1 ddos -Duration 10 -Workers 16"
+        Write-Host "  .\platform-minikube.ps1 chaos [Options]    Run concurrent GiST range exclusion & Idempotency-Key race chaos drills"
+        Write-Host "      Options: [-ChaosRuns <n>] [-Concurrency <n>]"
+        Write-Host "      Example: .\platform-minikube.ps1 chaos -ChaosRuns 12 -Concurrency 6"
+        Write-Host "  .\platform-minikube.ps1 chaos-drills       Execute Kafka partition resilience drill and verify outbox zero-loss recovery"
+        Write-Host "  .\platform-minikube.ps1 contract           Execute Newman / Postman API contract verification suite"
+        Write-Host "  .\platform-minikube.ps1 performance        Execute Grafana k6 load test evaluating P95/P99 latency against SLO targets"
+        Write-Host "  .\platform-minikube.ps1 dast               Execute OWASP ZAP dynamic application security baseline scan"
+        Write-Host "  .\platform-minikube.ps1 cost / finops      Evaluate OpenCost AWS on-demand vs. savings plan cloud costs"
+        Write-Host "  .\platform-minikube.ps1 finops-rightsize   Analyze 7-day Prometheus CPU/memory metrics and generate Helm resource requests"
+        Write-Host "      Options: [-Environment <dev|staging|prod>]"
+        Write-Host "      Example: .\platform-minikube.ps1 finops-rightsize -Environment dev"
+        Write-Host "  .\platform-minikube.ps1 bcdr / dr          Execute PostgreSQL 18 backup & point-in-time recovery (PitR) disaster drill"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 6. OBSERVABILITY DASHBOARDS & ARCHITECTURE BLUEPRINTS" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 dashboards         Synchronize and reload Grafana v13.2.3 Dashboards ConfigMap in 'observability'"
+        Write-Host "  .\platform-minikube.ps1 diagrams           Regenerate 12-tab Draw.io visual architecture blueprints (docs/Diagrams.drawio)"
+        Write-Host "      Alias:   .\platform-minikube.ps1 sync-diagrams"
+
+        Write-Host "`n================================================================================" -ForegroundColor DarkGray
+        Write-Host " 7. TERRAFORM INFRASTRUCTURE AS CODE (IaC)" -ForegroundColor Cyan
+        Write-Host "================================================================================" -ForegroundColor DarkGray
+        Write-Host "  .\platform-minikube.ps1 plan [Options]     Execute mutex-protected Terraform plan"
+        Write-Host "      Options: [-Platform <minikube|aws>] [-Environment <dev|staging|prod>]"
+        Write-Host "      Example: .\platform-minikube.ps1 plan -Platform minikube"
+        Write-Host "      Example: .\platform-minikube.ps1 plan -Platform aws"
+        Write-Host "  .\platform-minikube.ps1 apply [Options]    Execute mutex-protected Terraform apply"
+        Write-Host "      Options: [-Platform <minikube|aws>] [-Environment <dev|staging|prod>] [-AutoApprove]"
+        Write-Host "      Example: .\platform-minikube.ps1 apply -Platform minikube"
+        Write-Host "      Example: .\platform-minikube.ps1 apply -Platform aws -AutoApprove"
+        Write-Host "  .\platform-minikube.ps1 unlock [Options]   Force-unlock a stuck Terraform state"
+        Write-Host "      Options: -LockId <id> [-Platform <minikube|aws>]"
+        Write-Host "      Example: .\platform-minikube.ps1 unlock -LockId <lock-id>"
+        Write-Host "  .\platform-minikube.ps1 graph [Options]    Generate visual dependency graph of Terraform resources via Graphviz (dot)"
+        Write-Host "      Options: [-Platform <minikube|aws>]"
+        Write-Host "      Example: .\platform-minikube.ps1 graph -Platform minikube"
+        Write-Host "================================================================================`n" -ForegroundColor DarkGray
     }
 
     default {
