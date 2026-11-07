@@ -35,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onViewChange,
 }) => {
   return (
-    <header className="sticky top-3 z-40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full transition-all">
+    <header className="sticky top-3 z-40 w-full px-4 sm:px-6 lg:px-8 xl:px-10 transition-all">
       <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-xl px-4 py-2.5 flex items-center justify-between">
         {/* Brand & Monogram */}
         <div className="flex items-center space-x-3">

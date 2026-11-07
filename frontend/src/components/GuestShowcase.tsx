@@ -207,7 +207,7 @@ export const GuestShowcase: React.FC<GuestShowcaseProps> = ({
       )}
 
       {/* Room Showcase Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
         {filteredRooms.map((room) => {
           const isAvailable = room.status === 'AVAILABLE';
           const isComparing = selectedForCompare.includes(room.id);

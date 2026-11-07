@@ -509,8 +509,8 @@ const App: React.FC = () => {
         onDismiss={() => setActiveToastNotification(null)}
       />
 
-      {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Workspace Body (Full-Bleed Fluid Width) */}
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
         {activeView === 'GUEST_PORTAL' ? (
           /* ================= GUEST LUXURY BOOKING VIEW ================= */
           <GuestShowcase
@@ -664,9 +664,9 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Enterprise Footer */}
+      {/* Enterprise Footer (Full-Bleed Fluid Width) */}
       <footer className="bg-slate-900/60 border-t border-slate-800/80 py-6 text-center text-xs text-slate-400 mt-12">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span className="text-slate-300">Hotel Premium v2.0 &bull; Enterprise Hospitality Platform</span>
