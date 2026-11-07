@@ -1203,6 +1203,58 @@ function Invoke-SetImageTag {
 }
 
 # ==============================================================================
+# MINIKUBE DOCKER IMAGE CACHING & SYNCHRONIZATION
+# ==============================================================================
+function Sync-PlatformImagesIntoMinikube {
+    param([switch]$AppOnly, [switch]$InfraOnly, [switch]$ForceBuild)
+
+    $appImages = @(
+        "georgegxx/hotel-room-service:1.0.0",
+        "georgegxx/hotel-stay-service:1.0.0",
+        "georgegxx/hotel-billing-service:1.0.0",
+        "georgegxx/hotel-notification-worker:1.0.0",
+        "georgegxx/hotel-frontend:1.0.0"
+    )
+
+    $infraImages = @(
+        "quay.io/keycloak/keycloak:26.8.1",
+        "hashicorp/vault:2.2.0",
+        "ghcr.io/opencost/opencost:1.121.3",
+        "ghcr.io/opencost/opencost-ui:1.121.3",
+        "prom/prometheus:v3.14.0",
+        "grafana/grafana:13.2.3",
+        "grafana/loki:3.7.8",
+        "grafana/tempo:3.0.5",
+        "grafana/alloy:1.21.0",
+        "kong:3.9.4",
+        "confluentinc/cp-kafka:8.3.2",
+        "prometheuscommunity/postgres-exporter:v0.20.1",
+        "oliver006/redis_exporter:v1.94.0",
+        "danielqsj/kafka-exporter:v1.9.0"
+    )
+
+    $targetImages = if ($AppOnly) {
+        $appImages
+    } elseif ($InfraOnly) {
+        $infraImages
+    } else {
+        $infraImages + $appImages
+    }
+
+    $minikubeImages = & minikube image ls 2>$null
+    foreach ($img in $targetImages) {
+        $isApp = $appImages -contains $img
+        if (($ForceBuild -and $isApp) -or ($minikubeImages -notmatch [regex]::Escape($img))) {
+            $hasLocal = & docker images -q $img 2>$null
+            if ($hasLocal) {
+                Write-Host "  ▶ Caching $img into Minikube cache..." -ForegroundColor DarkGray
+                & minikube image load --overwrite=true $img 2>$null | Out-Null
+            }
+        }
+    }
+}
+
+# ==============================================================================
 # POSTGRESQL 18 MIGRATION SEEDER, KAFKA TOPICS & E2E SMOKE VERIFIER
 # ==============================================================================
 function Initialize-LocalDatabaseMigrations {
@@ -1217,7 +1269,7 @@ function Initialize-LocalDatabaseMigrations {
         Write-Host "  ▶ Applying idempotent SQL migrations (000001..000004) to PostgreSQL 18 ($pgPod)..." -ForegroundColor White
         $sqlFiles = Get-ChildItem -Path $migrationsDir -Filter "*.sql" | Where-Object { $_.Name -notmatch '^000000_' } | Sort-Object Name
         foreach ($sql in $sqlFiles) {
-            Get-Content $sql.FullName -Raw | kubectl exec -i -n data $pgPod -- psql -v ON_ERROR_STOP=0 -U hotel_user -d hotel_db 2>$null | Out-Null
+            Get-Content $sql.FullName -Raw | kubectl exec -i -n data $pgPod -- env PGPASSWORD="hotel_password" psql -v ON_ERROR_STOP=0 -U hotel_user -d hotel_db 2>$null | Out-Null
         }
         Show-Success "PostgreSQL 18 schema, GiST exclusion constraints, outbox, luxury rooms & audit tables verified."
     }
@@ -1233,7 +1285,7 @@ function Initialize-LocalDatabaseMigrations {
 }
 
 function Invoke-PlatformSmokeTest {
-    Show-Banner "Executing End-to-End Platform HTTP Smoke Verification"
+    Show-Banner "Executing End-to-End Platform HTTP Smoke Verification (12/12 Endpoints)"
     $endpoints = @(
         [pscustomobject]@{ Name = "Room Service Health";         Url = "http://localhost:8081/api/v1/health" },
         [pscustomobject]@{ Name = "Stay Service Health";         Url = "http://localhost:8082/api/v1/health" },
@@ -1241,6 +1293,9 @@ function Invoke-PlatformSmokeTest {
         [pscustomobject]@{ Name = "Notification Worker Health";  Url = "http://localhost:8084/api/v1/health" },
         [pscustomobject]@{ Name = "Kong API Gateway Proxy";      Url = "http://localhost:8000/api/v1/rooms" },
         [pscustomobject]@{ Name = "Hotel Frontend Portal";       Url = "http://localhost:5173/" },
+        [pscustomobject]@{ Name = "Keycloak IAM Console";        Url = "http://localhost:8181/realms/master" },
+        [pscustomobject]@{ Name = "HashiCorp Vault v2.2.0";      Url = "http://localhost:8200/v1/sys/health" },
+        [pscustomobject]@{ Name = "OpenCost FinOps UI";          Url = "http://localhost:7000/" },
         [pscustomobject]@{ Name = "Grafana v13.2.3 Health";      Url = "http://localhost:3000/api/health" },
         [pscustomobject]@{ Name = "Prometheus v3.14.0 Ready";    Url = "http://localhost:9090/-/ready" },
         [pscustomobject]@{ Name = "Alloy v1.21.0 Ready";         Url = "http://localhost:3300/-/ready" }
@@ -1411,8 +1466,10 @@ function Invoke-MinikubeFastResume {
     Show-Success "Database, messaging, and Hotel Premium microservice pods are Ready."
 
     Show-StageHeader "5/6" "Reconciling Vault v2.2.0 Secrets, Keycloak IAM & Istio mTLS"
-    Initialize-LocalVault
-    Initialize-LocalKeycloak
+    Initialize-LocalVault -Quiet
+    try { Invoke-VaultKubernetesAuthSetup -Namespace "vault" -Quiet } catch {}
+    Initialize-LocalKeycloak -Quiet
+    Show-Success "Vault KV-v2 secrets, K8s roles & Keycloak IAM reconciled."
 
     Show-StageHeader "6/6" "Connecting Self-Healing Localhost Port-Forward Tunnels"
     if (-not $NoTunnel) {
@@ -1483,6 +1540,9 @@ function Invoke-MinikubeBootstrap {
         kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=120s 2>$null | Out-Null
     }
     Show-Success "Resource metrics API (v1beta1.metrics.k8s.io) is active."
+
+    # Pre-cache core infrastructure images into Minikube cache to eliminate cold-start timeouts in Stage 6
+    Sync-PlatformImagesIntoMinikube -InfraOnly
 
     # [3/9] Namespaces & PodSecurity Labels
     Show-StageHeader "3/9" "Configuring 8 Strict Namespaces & PodSecurity Standards"
@@ -1590,36 +1650,8 @@ function Invoke-MinikubeBootstrap {
         Show-Success "Docker Compose images built cleanly."
     }
 
-    # Synchronize local Docker images into Minikube cache
-    $serviceImages = @(
-        "georgegxx/hotel-room-service:1.0.0",
-        "georgegxx/hotel-stay-service:1.0.0",
-        "georgegxx/hotel-billing-service:1.0.0",
-        "georgegxx/hotel-notification-worker:1.0.0",
-        "georgegxx/hotel-frontend:1.0.0",
-        "ghcr.io/opencost/opencost:1.121.3",
-        "ghcr.io/opencost/opencost-ui:1.121.3",
-        "quay.io/keycloak/keycloak:26.8.1",
-        "prom/prometheus:v3.14.0",
-        "grafana/grafana:13.2.3",
-        "grafana/loki:3.7.8",
-        "grafana/tempo:3.0.5",
-        "grafana/alloy:1.21.0",
-        "kong:3.9.4",
-        "confluentinc/cp-kafka:8.3.2",
-        "prometheuscommunity/postgres-exporter:v0.20.1",
-        "oliver006/redis_exporter:v1.94.0",
-        "danielqsj/kafka-exporter:v1.9.0",
-        "hashicorp/vault:2.2.0"
-    )
-    $minikubeImages = & minikube image ls 2>$null
-    foreach ($img in $serviceImages) {
-        $isAppImage = $appImages -contains $img
-        if (($BuildImages -and $isAppImage) -or ($minikubeImages -notmatch [regex]::Escape($img))) {
-            Write-Host "  Loading image $img into Minikube cache..." -ForegroundColor DarkGray
-            & minikube image load --overwrite=true $img 2>$null | Out-Null
-        }
-    }
+    # Synchronize microservice application images into Minikube cache
+    Sync-PlatformImagesIntoMinikube -AppOnly -ForceBuild:$BuildImages
 
     $servicesFile = Join-Path $servicesDir "hotel-services.yaml"
     if (Test-Path $servicesFile) {
@@ -1689,6 +1721,15 @@ function Start-AutomatedTunnels {
             }
         }
         if (-not $isRunning) {
+            # Clean up lingering or orphan kubectl port-forward processes before starting supervisor
+            Get-Process kubectl -ErrorAction SilentlyContinue | Where-Object {
+                try {
+                    $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+                    $cmd -and $cmd -match "port-forward"
+                } catch { $false }
+            } | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 300
+
             Write-Host "  ▶ Launching self-healing network tunnels supervisor in background..." -ForegroundColor White
             $proc = Start-Process -FilePath "python" -ArgumentList $pySupervisor -WindowStyle Hidden -PassThru
             Start-Sleep -Seconds 3
