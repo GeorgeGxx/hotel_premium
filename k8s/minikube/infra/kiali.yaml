@@ -96,14 +96,19 @@ data:
         url: "http://prometheus-server.observability.svc.cluster.local:9090"
       grafana:
         enabled: true
-        external_url: "http://grafana.observability.svc.cluster.local:3000"
         internal_url: "http://grafana.observability.svc.cluster.local:3000"
+        external_url: "http://localhost:3000"
       tracing:
         enabled: true
         provider: "tempo"
         internal_url: "http://tempo.observability.svc.cluster.local:3200"
-        external_url: "http://localhost:3200"
+        external_url: "http://localhost:3000"
+        health_check_url: "http://tempo.observability.svc.cluster.local:3200/ready"
         use_grpc: false
+        tempo_config:
+          org_id: "1"
+          datasource_uid: "tempo"
+          url_format: "grafana"
       istio:
         component_status:
           enabled: true
