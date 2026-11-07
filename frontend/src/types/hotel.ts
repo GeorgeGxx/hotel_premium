@@ -111,16 +111,6 @@ export interface UpdateStayDTO {
   notes?: string;
 }
 
-export interface CashShift {
-  id: string;
-  user_id: string;
-  opened_at: string;
-  closed_at?: string;
-  opening_amount: number;
-  closing_amount?: number;
-  status: 'OPEN' | 'CLOSED';
-}
-
 export interface CheckInFormData {
   roomId: string;
   guestName: string;
@@ -134,7 +124,7 @@ export interface CheckInFormData {
   notes: string;
 }
 
-export type UserRole = 'ADMIN' | 'USER';
+type UserRole = 'ADMIN' | 'USER';
 
 export interface CurrentUser {
   username: string;

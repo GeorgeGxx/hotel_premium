@@ -1,12 +1,12 @@
 import {
   Room,
   RoomStatus,
-  Stay,
   StayDetails,
   CreateStayDTO,
   UpdateStayDTO,
   StayStatus,
   PaymentStatus,
+  ConciergeAddon,
 } from '../types/hotel';
 
 const rawApiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -19,7 +19,7 @@ function generateIdempotencyKey(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export const mockRooms: Room[] = [
+const mockRooms: Room[] = [
   {
     id: '1a7e2b10-0001-4000-8000-000000000001',
     number: '101',
@@ -155,7 +155,7 @@ export function getRoomImageUrl(room: Partial<Room>): string {
   return 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80';
 }
 
-export const CONCIERGE_ADDONS: import('../types/hotel').ConciergeAddon[] = [
+export const CONCIERGE_ADDONS: ConciergeAddon[] = [
   {
     id: 'addon-vip-transfer',
     name: 'VIP Airport Limousine Transfer (Mercedes S-Class)',
@@ -330,18 +330,6 @@ export async function fetchStays(status?: StayStatus): Promise<StayDetails[]> {
   }
 }
 
-export async function fetchStayByID(stayId: string): Promise<StayDetails> {
-  const res = await fetch(`${API_BASE}/stays/${stayId}`, {
-    headers: { 'Accept': 'application/json' },
-  });
-  if (!res.ok) {
-    const found = mockStaysMemory.find((s) => s.id === stayId);
-    if (found) return found;
-    throw new Error('Reservation not found');
-  }
-  return res.json();
-}
-
 export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
   try {
     const res = await fetch(`${API_BASE}/stays`, {
@@ -487,20 +475,6 @@ export async function checkOutStay(stayId: string): Promise<void> {
   }
 }
 
-export async function processCheckIn(stayData: Partial<Stay>): Promise<{ success: boolean; message: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/stays/check-in`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(stayData),
-    });
-    if (!res.ok) throw new Error('Check-in failed');
-    return { success: true, message: 'Check-in processed successfully' };
-  } catch {
-    return { success: true, message: 'Check-in processed' };
-  }
-}
-
 // ==============================================================================
 // REAL-TIME SERVER-SENT EVENTS (SSE) & SAGA INTEGRATION
 // ==============================================================================
@@ -546,27 +520,4 @@ export function subscribeToLiveEvents(
   }
 }
 
-/**
- * Executes a distributed booking through the Saga Orchestrator
- */
-export async function bookWithSaga(
-  dto: CreateStayDTO,
-  userRole: string = 'ADMIN'
-): Promise<{ saga_id: string; status: string; stay_details?: StayDetails }> {
-  const res = await fetch(`${API_BASE}/stays/saga-booking`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Role': userRole,
-    },
-    body: JSON.stringify(dto),
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error_message || 'Saga booking transaction failed');
-  }
-
-  return res.json();
-}
 

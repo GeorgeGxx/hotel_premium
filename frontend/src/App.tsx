@@ -75,7 +75,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
   },
 ];
 
-export const App: React.FC = () => {
+const App: React.FC = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [stays, setStays] = useState<StayDetails[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
