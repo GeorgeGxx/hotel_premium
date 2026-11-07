@@ -11,7 +11,7 @@ RUN npm install
 
 # Build static bundle
 COPY . .
-ARG VITE_API_BASE_URL=/api
+ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN npm run build
@@ -29,6 +29,12 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy optimized nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Configure non-root permissions for nginx user
+RUN touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /usr/share/nginx/html
+
+USER nginx
 
 EXPOSE 80
 

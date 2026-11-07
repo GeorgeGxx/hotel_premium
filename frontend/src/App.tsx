@@ -427,7 +427,7 @@ export const App: React.FC = () => {
             <span>Hotel Premium v2.0 &bull; Enterprise Hospitality Platform</span>
           </div>
           <div className="flex items-center space-x-4 text-[11px] text-slate-400">
-            <span>Kong Gateway 3.14 (DB-less)</span>
+            <span>Kong Gateway 3.9.4 (DB-less)</span>
             <span>&bull;</span>
             <span>Kafka 7.8 (KRaft)</span>
             <span>&bull;</span>

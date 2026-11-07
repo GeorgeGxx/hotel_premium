@@ -8,7 +8,15 @@ import {
   StayStatus,
 } from '../types/hotel';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const rawApiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const API_BASE = rawApiBase === '/api' ? '/api/v1' : rawApiBase;
+
+function generateIdempotencyKey(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export const mockRooms: Room[] = [
   {
@@ -243,7 +251,10 @@ export async function updateRoomStatus(roomId: string, status: RoomStatus): Prom
   try {
     const res = await fetch(`${API_BASE}/rooms/${roomId}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Role': 'ADMIN',
+      },
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error('Failed to update room status on backend');
@@ -256,7 +267,10 @@ export async function updateRoomPrice(roomId: string, price: number): Promise<vo
   try {
     const res = await fetch(`${API_BASE}/rooms/${roomId}/price`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Role': 'ADMIN',
+      },
       body: JSON.stringify({ price }),
     });
     if (!res.ok) throw new Error('Failed to update room rate on backend');
@@ -302,7 +316,11 @@ export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
   try {
     const res = await fetch(`${API_BASE}/stays`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Idempotency-Key': generateIdempotencyKey('stay-create'),
+      },
       body: JSON.stringify(dto),
     });
     if (res.status === 409) {
@@ -314,8 +332,8 @@ export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
       throw new Error(errData.error || 'Failed to create reservation');
     }
     return res.json();
-  } catch (err: any) {
-    if (err.message && err.message.includes('already booked')) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('already booked')) {
       throw err;
     }
     // Fallback simulation for local offline testing

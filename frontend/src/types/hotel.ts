@@ -53,7 +53,7 @@ export interface GuestBookingRequest {
   grandTotalUSD: number;
 }
 
-export type StayStatus = 'RESERVED' | 'ACTIVE' | 'CHECKED_OUT' | 'CANCELLED';
+export type StayStatus = 'RESERVED' | 'ACTIVE' | 'CHECKED_OUT' | 'CANCELLED' | 'NO_SHOW';
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'REFUNDED';
 
 export interface Stay {
@@ -122,7 +122,7 @@ export interface CashShift {
 export interface CheckInFormData {
   roomId: string;
   guestName: string;
-  documentType: 'PASSPORT' | 'NATIONAL_ID' | 'DRIVERS_LICENSE';
+  documentType: 'PASSPORT' | 'NATIONAL_ID' | 'DRIVERS_LICENSE' | 'OTHER';
   documentNumber: string;
   email: string;
   phone: string;

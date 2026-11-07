@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium hidden sm:block">
-                Kong 3.14 &bull; Kafka 7.8 &bull; Keycloak 26.8 &bull; Postgres 18
+                Kong 3.9.4 &bull; Kafka 7.8 &bull; Keycloak 26.8 &bull; Postgres 18
               </p>
             </div>
           </div>
