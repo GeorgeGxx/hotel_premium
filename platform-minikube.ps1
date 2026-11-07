@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Hotel Premium - Minikube & Cloud DevSecOps Platform Orchestrator (UNIFIED)
 # Fully self-contained orchestrator for local Kubernetes development, SRE & Cloud.
 # Strict Version Baseline:
@@ -173,10 +173,6 @@ function Show-LocalPlatformUrls {
     Write-Host "│ 📜 Swagger UI (Stay Service) │ http://localhost:8082/swagger/index.html   │ Interactive UI │" -ForegroundColor White
     Write-Host "│ 📜 Swagger UI (Billing Svc)  │ http://localhost:8083/swagger/index.html   │ Interactive UI │" -ForegroundColor White
     Write-Host "│ 📜 Swagger UI (Notif Worker) │ http://localhost:8084/swagger/index.html   │ Interactive UI │" -ForegroundColor White
-    Write-Host "│ 🛏️ Room Service API          │ http://localhost:8081/api/v1/rooms         │ Bearer JWT     │" -ForegroundColor White
-    Write-Host "│ 🛌 Stay Service API          │ http://localhost:8082/api/v1/stays         │ Bearer JWT     │" -ForegroundColor White
-    Write-Host "│ 💳 Billing Service API       │ http://localhost:8083/api/v1/billing       │ Bearer JWT     │" -ForegroundColor White
-    Write-Host "│ 🔔 Notification Worker API   │ http://localhost:8084/api/v1/notifications │ Internal/Token │" -ForegroundColor White
     Write-Host "│ 🔑 Keycloak IAM Console      │ http://localhost:8181                      │ admin / admin  │" -ForegroundColor White
     Write-Host "│ 🔒 HashiCorp Vault UI        │ http://localhost:8200                      │ root           │" -ForegroundColor White
     Write-Host "│ 🧭 Kiali Mesh Console        │ http://localhost:20001/kiali/              │ Anonymous      │" -ForegroundColor White
