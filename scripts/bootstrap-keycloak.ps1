@@ -240,10 +240,10 @@ try {
 # 4. Ensure Clients
 Write-Host "`n[4/5] Configuring Clients..." -ForegroundColor Yellow
 # Frontend Public Client
-$clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=microservices_frontend"
+$clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=hotel-frontend"
 if (-not $clients -or $clients.Count -eq 0) {
     $frontendClient = @{
-        clientId = "microservices_frontend"
+        clientId = "hotel-frontend"
         enabled = $true
         publicClient = $true
         redirectUris = @("*", "http://localhost:*", "http://127.0.0.1:*", "http://192.168.49.2:*")
@@ -253,11 +253,11 @@ if (-not $clients -or $clients.Count -eq 0) {
         directAccessGrantsEnabled = $true
     } | ConvertTo-Json
     Invoke-KeycloakAdmin -Method Post -Uri "$KeycloakUrl/admin/realms/$Realm/clients" -Body $frontendClient
-    Write-Host "  [OK] Created public client: microservices_frontend" -ForegroundColor Green
+    Write-Host "  [OK] Created public client: hotel-frontend" -ForegroundColor Green
 } else {
     $fcId = $clients[0].id
     $frontendClient = @{
-        clientId = "microservices_frontend"
+        clientId = "hotel-frontend"
         enabled = $true
         publicClient = $true
         redirectUris = @("*", "http://localhost:*", "http://127.0.0.1:*", "http://192.168.49.2:*")
@@ -267,15 +267,15 @@ if (-not $clients -or $clients.Count -eq 0) {
         directAccessGrantsEnabled = $true
     } | ConvertTo-Json
     Invoke-KeycloakAdmin -Method Put -Uri "$KeycloakUrl/admin/realms/$Realm/clients/$fcId" -Body $frontendClient
-    Write-Host "  [OK] Public client microservices_frontend updated with flexible origins and redirect URIs." -ForegroundColor DarkGray
+    Write-Host "  [OK] Public client hotel-frontend updated with flexible origins and redirect URIs." -ForegroundColor DarkGray
 }
 
 # Backend Confidential Client
-$clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=microservices_client"
+$clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=hotel-backend"
 $confClientId = $null
 if (-not $clients -or $clients.Count -eq 0) {
     $confClient = @{
-        clientId = "microservices_client"
+        clientId = "hotel-backend"
         enabled = $true
         publicClient = $false
         redirectUris = @("http://localhost:8080/*", "https://oauth.pstmn.io/v1/browser-callback")
@@ -284,12 +284,12 @@ if (-not $clients -or $clients.Count -eq 0) {
         directAccessGrantsEnabled = $true
     } | ConvertTo-Json
     Invoke-KeycloakAdmin -Method Post -Uri "$KeycloakUrl/admin/realms/$Realm/clients" -Body $confClient
-    $clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=microservices_client"
+    $clients = Invoke-KeycloakAdmin -Method Get -Uri "$KeycloakUrl/admin/realms/$Realm/clients?clientId=hotel-backend"
     $confClientId = $clients[0].id
-    Write-Host "  [OK] Created confidential client: microservices_client" -ForegroundColor Green
+    Write-Host "  [OK] Created confidential client: hotel-backend" -ForegroundColor Green
 } else {
     $confClientId = $clients[0].id
-    Write-Host "  Confidential client microservices_client already exists." -ForegroundColor DarkGray
+    Write-Host "  Confidential client hotel-backend already exists." -ForegroundColor DarkGray
 }
 
 # Generate/Fetch Client Secret and Sync to .env and K8s Secret
