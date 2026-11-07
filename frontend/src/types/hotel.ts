@@ -51,6 +51,8 @@ export interface GuestBookingRequest {
   addonsSubtotalUSD: number;
   taxesUSD: number;
   grandTotalUSD: number;
+  depositUSD?: number;
+  paymentPolicy?: 'FULL' | 'DEPOSIT_50' | 'PAY_AT_HOTEL';
 }
 
 export type StayStatus = 'RESERVED' | 'ACTIVE' | 'CHECKED_OUT' | 'CANCELLED' | 'NO_SHOW';

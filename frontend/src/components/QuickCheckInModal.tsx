@@ -231,6 +231,29 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                     className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600 font-semibold text-indigo-700"
                   />
                 </div>
+                <div className="flex gap-1.5 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deposit: total })}
+                    className="text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                  >
+                    100% Full
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deposit: Math.round((total / 2) * 100) / 100 })}
+                    className="text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                  >
+                    50% Dep.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, deposit: 0 })}
+                    className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                  >
+                    $0 Hold
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -239,10 +262,17 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                 <span className="text-slate-500 font-medium">Calculated Total: </span>
                 <span className="text-base font-bold text-slate-900">${total.toFixed(2)}</span>
               </div>
-              <div>
+              <div className="text-right">
                 <span className="text-slate-500 font-medium">Balance Due: </span>
                 <span className="text-sm font-semibold text-slate-700">
                   ${Math.max(0, total - formData.deposit).toFixed(2)}
+                </span>
+                <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  formData.deposit >= total
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {formData.deposit >= total ? 'PAID' : 'PARTIAL'}
                 </span>
               </div>
             </div>

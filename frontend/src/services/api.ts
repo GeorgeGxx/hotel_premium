@@ -6,6 +6,7 @@ import {
   CreateStayDTO,
   UpdateStayDTO,
   StayStatus,
+  PaymentStatus,
 } from '../types/hotel';
 
 const rawApiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -259,6 +260,8 @@ let mockStaysMemory: StayDetails[] = [
    ROOMS API
    ========================================================================= */
 
+let activeRoomsMemory: Room[] = [...mockRooms];
+
 export async function fetchRooms(): Promise<Room[]> {
   try {
     const res = await fetch(`${API_BASE}/rooms`, {
@@ -266,7 +269,9 @@ export async function fetchRooms(): Promise<Room[]> {
     });
     if (!res.ok) throw new Error('API request failed');
     const data = await res.json();
-    return Array.isArray(data) && data.length > 0 ? data : mockRooms;
+    const rooms = Array.isArray(data) && data.length > 0 ? data : mockRooms;
+    activeRoomsMemory = rooms;
+    return rooms;
   } catch {
     return mockRooms;
   }
@@ -362,13 +367,24 @@ export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
       throw err;
     }
     // Fallback simulation for local offline testing
+    const roomInfo =
+      activeRoomsMemory.find((r) => r.id === dto.room_id) ||
+      mockRooms.find((r) => r.id === dto.room_id);
+    const totalAmount = dto.total_nights * dto.nightly_rate;
+    const paymentStatus: PaymentStatus =
+      dto.deposit_amount >= totalAmount
+        ? 'PAID'
+        : dto.deposit_amount > 0
+        ? 'PARTIAL'
+        : 'PENDING';
+
     const newMockStay: StayDetails = {
       id: `stay-${Date.now()}`,
       room_id: dto.room_id,
       primary_guest_id: `guest-${Date.now()}`,
-      room_number: mockRooms.find((r) => r.id === dto.room_id)?.number || '101',
-      category_name: mockRooms.find((r) => r.id === dto.room_id)?.category_name || 'Standard',
-      room_floor: mockRooms.find((r) => r.id === dto.room_id)?.floor || 1,
+      room_number: roomInfo?.number || '101',
+      category_name: roomInfo?.category_name || 'Standard',
+      room_floor: roomInfo?.floor || 1,
       guest_name: dto.guest_name,
       guest_email: dto.guest_email,
       guest_phone: dto.guest_phone,
@@ -380,8 +396,8 @@ export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
       nightly_rate: dto.nightly_rate,
       total_nights: dto.total_nights,
       deposit_amount: dto.deposit_amount,
-      total_amount: dto.total_nights * dto.nightly_rate,
-      payment_status: dto.deposit_amount >= dto.total_nights * dto.nightly_rate ? 'PAID' : 'PARTIAL',
+      total_amount: totalAmount,
+      payment_status: paymentStatus,
       notes: dto.notes,
       created_at: new Date().toISOString(),
     };

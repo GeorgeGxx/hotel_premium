@@ -670,6 +670,29 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                     onChange={(e) => setCreateDeposit(Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
+                  <div className="flex gap-1.5 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCreateDeposit(createTotalAmount)}
+                      className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-medium transition-colors"
+                    >
+                      100% Full
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateDeposit(Math.round((createTotalAmount / 2) * 100) / 100)}
+                      className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-medium transition-colors"
+                    >
+                      50% Deposit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateDeposit(0)}
+                      className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 px-2 py-0.5 rounded font-medium transition-colors"
+                    >
+                      $0 Hold
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -710,6 +733,15 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                   <span className="text-slate-400 text-[11px]">Remaining Balance</span>
                   <div className="font-bold text-amber-400 text-base">
                     ${Math.max(0, createTotalAmount - createDeposit).toFixed(2)} USD
+                  </div>
+                  <div className="mt-0.5">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      createDeposit >= createTotalAmount
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {createDeposit >= createTotalAmount ? 'Folio: PAID (Zero Balance)' : 'Folio: PARTIAL (Settlement at Check-Out)'}
+                    </span>
                   </div>
                 </div>
               </div>

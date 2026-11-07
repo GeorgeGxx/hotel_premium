@@ -34,6 +34,7 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
   const [guestPhone, setGuestPhone] = useState<string>('');
   const [specialRequests, setSpecialRequests] = useState<string>('');
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [paymentPolicy, setPaymentPolicy] = useState<'DEPOSIT_50' | 'FULL' | 'PAY_AT_HOTEL'>('DEPOSIT_50');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmedBooking, setConfirmedBooking] = useState<GuestBookingRequest | null>(null);
 
@@ -50,6 +51,15 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
 
   const taxesUSD = (roomSubtotal + addonsSubtotal) * 0.1; // 10% Luxury Hospitality & Tourism Tax
   const grandTotalUSD = roomSubtotal + addonsSubtotal + taxesUSD;
+
+  // Deposit calculation based on selected policy
+  const depositUSD =
+    paymentPolicy === 'FULL'
+      ? grandTotalUSD
+      : paymentPolicy === 'DEPOSIT_50'
+      ? Math.round(grandTotalUSD * 0.5 * 100) / 100
+      : 0;
+  const balanceDueUSD = Math.max(0, grandTotalUSD - depositUSD);
 
   const toggleAddon = (addonId: string) => {
     setSelectedAddons((prev) =>
@@ -81,6 +91,8 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
       addonsSubtotalUSD: addonsSubtotal,
       taxesUSD,
       grandTotalUSD,
+      depositUSD,
+      paymentPolicy,
     };
 
     try {
@@ -181,9 +193,33 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Total Paid (USD)</span>
-                <span className="font-bold text-emerald-600 text-sm">
+                <span className="text-slate-500">Total Stay Valuation</span>
+                <span className="font-bold text-slate-900">
                   ${confirmedBooking.grandTotalUSD.toFixed(2)} USD
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-slate-500">Deposit Paid Now</span>
+                <span className="font-bold text-emerald-600 text-sm">
+                  ${(confirmedBooking.depositUSD ?? confirmedBooking.grandTotalUSD).toFixed(2)} USD
+                </span>
+              </div>
+              {Math.max(0, confirmedBooking.grandTotalUSD - (confirmedBooking.depositUSD ?? confirmedBooking.grandTotalUSD)) > 0.01 && (
+                <div className="flex justify-between border-b pb-2 bg-amber-50/60 -mx-2 px-2 py-1 rounded-lg">
+                  <span className="text-amber-800 font-medium">Balance Due at Departure</span>
+                  <span className="font-bold text-amber-700 text-sm">
+                    ${(confirmedBooking.grandTotalUSD - (confirmedBooking.depositUSD ?? confirmedBooking.grandTotalUSD)).toFixed(2)} USD
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-slate-500">Payment Policy</span>
+                <span className="font-semibold text-indigo-600">
+                  {confirmedBooking.paymentPolicy === 'DEPOSIT_50'
+                    ? '50% Guarantee Deposit'
+                    : confirmedBooking.paymentPolicy === 'PAY_AT_HOTEL'
+                    ? 'Credit Card Guarantee (Pay at Hotel)'
+                    : '100% Full Payment Upfront'}
                 </span>
               </div>
               <div className="pt-2 text-slate-500 text-[11px]">
@@ -388,12 +424,100 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
               </div>
               <div className="border-t border-slate-200 pt-2 flex justify-between items-baseline">
                 <div>
-                  <span className="text-sm font-bold text-slate-900">Total Guaranteed Amount</span>
+                  <span className="text-sm font-bold text-slate-900">Total Guaranteed Valuation</span>
                   <p className="text-[10px] text-slate-500">All prices denominated strictly in USD</p>
                 </div>
-                <span className="text-xl font-black text-indigo-950">
+                <span className="text-lg font-black text-slate-900">
                   ${grandTotalUSD.toFixed(2)} USD
                 </span>
+              </div>
+              <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200 text-xs">
+                <span className="font-bold text-indigo-950">Deposit Payable Today:</span>
+                <span className="text-base font-black text-indigo-600">${depositUSD.toFixed(2)} USD</span>
+              </div>
+              {balanceDueUSD > 0.01 && (
+                <div className="flex justify-between items-center text-[11px] text-amber-700 bg-amber-50/70 -mx-2 px-2 py-1 rounded-md">
+                  <span>Remaining Folio Balance (Due at Departure):</span>
+                  <span className="font-bold">${balanceDueUSD.toFixed(2)} USD</span>
+                </div>
+              )}
+            </div>
+
+            {/* Payment Guarantee & Deposit Policy Selection */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center">
+                <CreditCard className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+                Select Payment &amp; Guarantee Policy
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* 50% Deposit */}
+                <div
+                  onClick={() => setPaymentPolicy('DEPOSIT_50')}
+                  className={`cursor-pointer p-3 rounded-xl border text-left transition-all ${
+                    paymentPolicy === 'DEPOSIT_50'
+                      ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">50% Deposit</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded">
+                      Standard
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Pay 50% now, balance settled at check-out
+                  </p>
+                  <p className="text-xs font-bold text-indigo-700 mt-2">
+                    ${(grandTotalUSD * 0.5).toFixed(2)} USD now
+                  </p>
+                </div>
+
+                {/* 100% Full */}
+                <div
+                  onClick={() => setPaymentPolicy('FULL')}
+                  className={`cursor-pointer p-3 rounded-xl border text-left transition-all ${
+                    paymentPolicy === 'FULL'
+                      ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">100% Full Payment</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded">
+                      Zero Balance
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Fully settled now for instant departure
+                  </p>
+                  <p className="text-xs font-bold text-emerald-700 mt-2">
+                    ${grandTotalUSD.toFixed(2)} USD now
+                  </p>
+                </div>
+
+                {/* Pay at Hotel */}
+                <div
+                  onClick={() => setPaymentPolicy('PAY_AT_HOTEL')}
+                  className={`cursor-pointer p-3 rounded-xl border text-left transition-all ${
+                    paymentPolicy === 'PAY_AT_HOTEL'
+                      ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">Card Guarantee</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded">
+                      Pay Later
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Hold with card; pay full sum at check-out
+                  </p>
+                  <p className="text-xs font-bold text-slate-700 mt-2">
+                    $0.00 USD today
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -401,7 +525,7 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
             <div className="flex items-center space-x-2 text-[11px] text-slate-500 bg-slate-100 p-2.5 rounded-lg">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>
-                Free cancellation up to 48 hours prior to arrival. Encrypted via Keycloak OAuth2 & Kong Gateway.
+                Free cancellation up to 48 hours prior to arrival. Zero-Balance policy enforced at departure.
               </span>
             </div>
 
@@ -420,7 +544,11 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
                 className="inline-flex items-center px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
               >
                 <CreditCard className="w-4 h-4 mr-2" />
-                {isSubmitting ? 'Confirming Reservation...' : 'Confirm & Guarantee Suite'}
+                {isSubmitting
+                  ? 'Confirming Reservation...'
+                  : paymentPolicy === 'PAY_AT_HOTEL'
+                  ? 'Guarantee Suite ($0.00 Today)'
+                  : `Confirm & Pay $${depositUSD.toFixed(2)} USD`}
               </button>
             </div>
           </form>

@@ -160,4 +160,29 @@ describe('ReservationsManager Component Tests', () => {
       expect(handleCheckOutStay).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('provides dynamic deposit presets (100% Full, 50% Deposit, $0 Hold) in creation modal', () => {
+    render(
+      <ReservationsManager
+        stays={mockStays}
+        rooms={mockRooms}
+        currentUser={mockUser}
+        onRefreshStays={vi.fn()}
+        onCreateStay={vi.fn()}
+        onUpdateStay={vi.fn()}
+        onCancelStay={vi.fn()}
+        onCheckOutStay={vi.fn()}
+        showToast={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByText('New Reservation'));
+    expect(screen.getByText('100% Full')).toBeInTheDocument();
+    expect(screen.getByText('50% Deposit')).toBeInTheDocument();
+    expect(screen.getByText('$0 Hold')).toBeInTheDocument();
+
+    // Click 50% Deposit preset
+    fireEvent.click(screen.getByText('50% Deposit'));
+    expect(screen.getByText(/Folio: PARTIAL/i)).toBeInTheDocument();
+  });
 });

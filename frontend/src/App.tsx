@@ -162,6 +162,8 @@ export const App: React.FC = () => {
 
   // Guest luxury booking portal confirmation
   const handleGuestBookingConfirm = async (req: GuestBookingRequest) => {
+    const depositAmount =
+      req.depositUSD !== undefined ? req.depositUSD : req.grandTotalUSD;
     const created = await createStay({
       room_id: req.roomId,
       guest_name: req.guestName,
@@ -173,26 +175,44 @@ export const App: React.FC = () => {
       check_out_date: req.checkOutDate,
       total_nights: req.totalNights,
       nightly_rate: req.roomSubtotalUSD / req.totalNights,
-      deposit_amount: req.grandTotalUSD,
-      notes: req.specialRequests,
+      deposit_amount: depositAmount,
+      notes: req.specialRequests
+        ? `${req.specialRequests} [Policy: ${req.paymentPolicy || 'STANDARD'}]`
+        : `[Policy: ${req.paymentPolicy || 'STANDARD'}]`,
       status: 'RESERVED',
     });
 
     setStays((prev) => [created, ...prev]);
-    showToast(`VIP Reservation Confirmed for ${req.guestName}! Room booked.`);
+    showToast(
+      `VIP Reservation Confirmed for ${req.guestName}! (${
+        depositAmount < req.grandTotalUSD ? 'Partial Guarantee Deposit' : 'Fully Paid'
+      })`
+    );
   };
 
   // Manual Check-Out from Matrix
   const handleCheckOut = async (room: Room) => {
+    // Find active stay for this room if any
+    const activeStay = stays.find(
+      (s) => (s.room_id === room.id || s.room_number === room.number) && s.status === 'ACTIVE'
+    );
+
+    if (activeStay) {
+      const balanceDue = activeStay.total_amount - activeStay.deposit_amount;
+      if (balanceDue > 0.01 && activeStay.payment_status !== 'PAID') {
+        alert(
+          `⛔ ZERO-BALANCE FOLIO SETTLEMENT REQUIRED\n\nSuite ${room.number} (${activeStay.guest_name}) has an outstanding folio balance of $${balanceDue.toFixed(2)} USD.\n\nRedirecting to Reservations & Folio Manager to settle before departure.`
+        );
+        setActiveView('RESERVATIONS');
+        return;
+      }
+    }
+
     const confirm = window.confirm(
       `Confirm check-out for Room ${room.number}? Room will be marked for cleaning.`
     );
     if (!confirm) return;
 
-    // Find active stay for this room if any
-    const activeStay = stays.find(
-      (s) => (s.room_id === room.id || s.room_number === room.number) && s.status === 'ACTIVE'
-    );
     if (activeStay) {
       await checkOutStay(activeStay.id);
       setStays((prev) =>
