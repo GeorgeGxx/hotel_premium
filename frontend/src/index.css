@@ -9,3 +9,13 @@
 .font-serif-luxury {
   font-family: 'Playfair Display', Georgia, Cambria, 'Times New Roman', serif;
 }
+
+@keyframes toastCountdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   Sparkles,
@@ -13,19 +13,24 @@ import { AppNotification, NotificationCategory } from '../types/hotel';
 interface LateralNotificationToastProps {
   notification: AppNotification | null;
   onDismiss: () => void;
+  durationMs?: number;
 }
 
 export const LateralNotificationToast: React.FC<LateralNotificationToastProps> = ({
   notification,
   onDismiss,
+  durationMs = 5000,
 }) => {
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+
   useEffect(() => {
-    if (!notification) return;
+    if (!notification || isPaused) return;
+    // Safety fallback timer matching the countdown bar duration
     const timer = setTimeout(() => {
       onDismiss();
-    }, 5500);
+    }, durationMs + 200);
     return () => clearTimeout(timer);
-  }, [notification, onDismiss]);
+  }, [notification, onDismiss, durationMs, isPaused]);
 
   if (!notification) return null;
 
@@ -84,9 +89,13 @@ export const LateralNotificationToast: React.FC<LateralNotificationToastProps> =
   };
 
   return (
-    <div className="fixed top-20 right-3 sm:right-6 z-[9999] w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] pointer-events-auto animate-in slide-in-from-right-6 fade-in duration-200">
+    <div
+      className="fixed top-20 right-3 sm:right-6 z-[9999] w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] pointer-events-auto animate-in slide-in-from-right-6 fade-in duration-200"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
       <div
-        className={`bg-slate-900/90 backdrop-blur-xl rounded-2xl border px-3.5 py-2.5 shadow-2xl shadow-black/80 text-slate-100 flex items-start space-x-2.5 relative overflow-hidden group transition-all ${getCardBorder(
+        className={`bg-slate-900/95 backdrop-blur-xl rounded-2xl border px-3.5 py-2.5 shadow-2xl shadow-black/80 text-slate-100 flex items-start space-x-2.5 relative overflow-hidden group transition-all ${getCardBorder(
           notification.category
         )}`}
       >
@@ -108,7 +117,9 @@ export const LateralNotificationToast: React.FC<LateralNotificationToastProps> =
             <span className="text-[9px] font-bold tracking-wider uppercase text-amber-400 truncate">
               {notification.category}
             </span>
-            <span className="text-[9px] text-slate-500 shrink-0">Just now</span>
+            <span className="text-[9px] text-slate-500 shrink-0">
+              {isPaused ? 'Paused' : 'Just now'}
+            </span>
           </div>
           <h5 className="font-semibold text-white text-xs leading-snug truncate mt-0.5">
             {notification.title}
@@ -128,9 +139,17 @@ export const LateralNotificationToast: React.FC<LateralNotificationToastProps> =
           <X className="w-3.5 h-3.5" />
         </button>
 
-        {/* Slim Accent Line */}
-        <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-slate-800 overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600/40 w-full animate-pulse" />
+        {/* Gradual Inverse Progress Countdown Line (Decreasing from 100% to 0%) */}
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-slate-800/80 overflow-hidden">
+          <div
+            key={notification.id}
+            onAnimationEnd={onDismiss}
+            style={{
+              animation: `toastCountdown ${durationMs}ms linear forwards`,
+              animationPlayState: isPaused ? 'paused' : 'running',
+            }}
+            className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 shadow-xs shadow-amber-400/50"
+          />
         </div>
       </div>
     </div>
