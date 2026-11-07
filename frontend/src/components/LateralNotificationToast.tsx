@@ -32,74 +32,106 @@ export const LateralNotificationToast: React.FC<LateralNotificationToastProps> =
   const getIcon = (cat: NotificationCategory) => {
     switch (cat) {
       case 'RESERVATION':
-        return <Calendar className="w-5 h-5 text-amber-400" />;
+        return <Calendar className="w-3.5 h-3.5 text-amber-400" />;
       case 'CHECK_IN':
-        return <UserCheck className="w-5 h-5 text-emerald-400" />;
+        return <UserCheck className="w-3.5 h-3.5 text-emerald-400" />;
       case 'CHECK_OUT':
-        return <LogOut className="w-5 h-5 text-blue-400" />;
+        return <LogOut className="w-3.5 h-3.5 text-blue-400" />;
       case 'HOUSEKEEPING':
-        return <Sparkles className="w-5 h-5 text-cyan-400" />;
+        return <Sparkles className="w-3.5 h-3.5 text-cyan-400" />;
       case 'FOLIO':
-        return <CreditCard className="w-5 h-5 text-indigo-400" />;
+        return <CreditCard className="w-3.5 h-3.5 text-indigo-400" />;
       case 'SYSTEM':
       default:
-        return <CheckCircle2 className="w-5 h-5 text-amber-400" />;
+        return <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />;
     }
   };
 
-  const getBorderColor = (cat: NotificationCategory) => {
+  const getIconBg = (cat: NotificationCategory) => {
     switch (cat) {
       case 'RESERVATION':
-        return 'border-amber-500/50 shadow-amber-500/10';
+        return 'bg-amber-500/15 border-amber-500/30';
       case 'CHECK_IN':
-        return 'border-emerald-500/50 shadow-emerald-500/10';
+        return 'bg-emerald-500/15 border-emerald-500/30';
       case 'CHECK_OUT':
-        return 'border-blue-500/50 shadow-blue-500/10';
+        return 'bg-blue-500/15 border-blue-500/30';
       case 'HOUSEKEEPING':
-        return 'border-cyan-500/50 shadow-cyan-500/10';
+        return 'bg-cyan-500/15 border-cyan-500/30';
       case 'FOLIO':
-        return 'border-indigo-500/50 shadow-indigo-500/10';
+        return 'bg-indigo-500/15 border-indigo-500/30';
       case 'SYSTEM':
       default:
-        return 'border-slate-700 shadow-slate-900/50';
+        return 'bg-slate-800/70 border-slate-700/60';
+    }
+  };
+
+  const getCardBorder = (cat: NotificationCategory) => {
+    switch (cat) {
+      case 'RESERVATION':
+        return 'border-amber-500/30 hover:border-amber-500/50 shadow-amber-500/5';
+      case 'CHECK_IN':
+        return 'border-emerald-500/30 hover:border-emerald-500/50 shadow-emerald-500/5';
+      case 'CHECK_OUT':
+        return 'border-blue-500/30 hover:border-blue-500/50 shadow-blue-500/5';
+      case 'HOUSEKEEPING':
+        return 'border-cyan-500/30 hover:border-cyan-500/50 shadow-cyan-500/5';
+      case 'FOLIO':
+        return 'border-indigo-500/30 hover:border-indigo-500/50 shadow-indigo-500/5';
+      case 'SYSTEM':
+      default:
+        return 'border-slate-800 hover:border-slate-700';
     }
   };
 
   return (
-    <div className="fixed top-20 right-3 sm:right-6 left-3 sm:left-auto z-[9999] max-w-sm w-auto sm:w-full pointer-events-auto animate-in slide-in-from-right-8 fade-in duration-300">
+    <div className="fixed top-20 right-3 sm:right-6 z-[9999] w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] pointer-events-auto animate-in slide-in-from-right-6 fade-in duration-200">
       <div
-        className={`bg-slate-900/95 backdrop-blur-xl rounded-2xl border p-4 shadow-2xl ${getBorderColor(
+        className={`bg-slate-900/90 backdrop-blur-xl rounded-2xl border px-3.5 py-2.5 shadow-2xl shadow-black/80 text-slate-100 flex items-start space-x-2.5 relative overflow-hidden group transition-all ${getCardBorder(
           notification.category
-        )} text-slate-100 flex items-start space-x-3 relative overflow-hidden`}
+        )}`}
       >
-        {/* Glow accent */}
-        <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+        {/* Subtle Ambient Radial Glow */}
+        <div className="absolute -top-6 -right-6 w-16 h-16 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
 
-        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 shrink-0 mt-0.5">
+        {/* Compact Icon Badge */}
+        <div
+          className={`w-7 h-7 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${getIconBg(
+            notification.category
+          )}`}
+        >
           {getIcon(notification.category)}
         </div>
 
-        <div className="flex-1 min-w-0 pr-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+        {/* Content */}
+        <div className="flex-1 min-w-0 pr-1">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[9px] font-bold tracking-wider uppercase text-amber-400 truncate">
               {notification.category}
             </span>
-            <span className="text-[10px] text-slate-500">&bull; Just now</span>
+            <span className="text-[9px] text-slate-500 shrink-0">Just now</span>
           </div>
-          <h5 className="font-bold text-white text-xs mt-0.5">{notification.title}</h5>
-          <p className="text-slate-300 text-[11px] mt-0.5 leading-relaxed break-words">
+          <h5 className="font-semibold text-white text-xs leading-snug truncate mt-0.5">
+            {notification.title}
+          </h5>
+          <p className="text-slate-300 text-[11px] leading-tight line-clamp-2 mt-0.5">
             {notification.message}
           </p>
         </div>
 
+        {/* Minimalist Close Action */}
         <button
           type="button"
           onClick={onDismiss}
           className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
           title="Dismiss notification"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
+
+        {/* Slim Accent Line */}
+        <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-slate-800 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600/40 w-full animate-pulse" />
+        </div>
       </div>
     </div>
   );
