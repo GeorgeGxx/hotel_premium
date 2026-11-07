@@ -19,15 +19,15 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - "room-service:8081"
-          - "stay-service:8082"
-          - "billing-service:8083"
-          - "notification-worker:8084"
+          - "hotel-room-service:8081"
+          - "hotel-stay-service:8082"
+          - "hotel-billing-service:8083"
+          - "hotel-notification-worker:8084"
 
   - job_name: "kafka-exporter"
     metrics_path: /metrics
     static_configs:
-      - targets: ["kafka_exporter:9308"]
+      - targets: ["kafka-exporter:9308"]
 
   - job_name: "vault"
     metrics_path: /v1/sys/metrics
@@ -36,17 +36,13 @@ scrape_configs:
     static_configs:
       - targets: ["vault:8200"]
 
-  - job_name: "otel-collector"
-    static_configs:
-      - targets: ["otel-collector:8889"]
-
   - job_name: "redis"
     static_configs:
-      - targets: ["redis_exporter:9121"]
+      - targets: ["redis-exporter:9121"]
 
   - job_name: "postgres"
     static_configs:
-      - targets: ["postgres_exporter:9187"]
+      - targets: ["postgres-exporter:9187"]
 
   - job_name: "alloy"
     static_configs:

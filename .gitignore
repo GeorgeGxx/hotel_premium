@@ -26,3 +26,17 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# Python, Terraform, Tunnels & Backups
+**/__pycache__/
+*.pyc
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+backups/
+devsecops/dast/zap/zap-report.html
+scripts/.tunnels.pid
+scripts/.cloudflare-tunnels.json
+scripts/.cf-*.log
+
+scratch/

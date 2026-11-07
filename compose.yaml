@@ -4,7 +4,7 @@ services:
   # ============================================================================
   postgres:
     image: postgres:18-alpine
-    container_name: hotel_postgres
+    container_name: postgres
     restart: unless-stopped
     command:
       - "postgres"
@@ -28,9 +28,9 @@ services:
     networks:
       - hotel_net
 
-  postgres_exporter:
+  postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.20.1
-    container_name: hotel_postgres_exporter
+    container_name: postgres-exporter
     restart: unless-stopped
     depends_on:
       postgres:
@@ -44,7 +44,7 @@ services:
 
   redis:
     image: redis:8.8.1-alpine
-    container_name: hotel_redis
+    container_name: redis
     restart: unless-stopped
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
@@ -60,26 +60,27 @@ services:
     networks:
       - hotel_net
 
-  redis_exporter:
-    image: oliver006/redis_exporter:v1.82.0
-    container_name: hotel_redis_exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.94.0
+    container_name: redis-exporter
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
     environment:
       REDIS_ADDR: "redis:6379"
+      REDIS_EXPORTER_CHECK_KEYS: "idempotency:*,rooms:*,notif:dedup:*"
     ports:
       - "9121:9121"
     networks:
       - hotel_net
 
   # ============================================================================
-  # 2. EVENT STREAMING BACKBONE (Apache Kafka 7.8.0 KRaft & Kafka Exporter v1.9.0)
+  # 2. EVENT STREAMING BACKBONE (Apache Kafka 8.3.2 KRaft & Kafka Exporter v1.9.0)
   # ============================================================================
   kafka:
-    image: confluentinc/cp-kafka:7.8.0
-    container_name: hotel_kafka
+    image: confluentinc/cp-kafka:8.3.2
+    container_name: kafka
     restart: unless-stopped
     ports:
       - "${KAFKA_PORT:-9092}:9092"
@@ -102,6 +103,7 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
       KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_COMPRESSION_TYPE: 'lz4'
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -113,9 +115,9 @@ services:
     networks:
       - hotel_net
 
-  kafka_init_topics:
-    image: confluentinc/cp-kafka:7.8.0
-    container_name: hotel_kafka_init_topics
+  kafka-init-topics:
+    image: confluentinc/cp-kafka:8.3.2
+    container_name: kafka-init-topics
     restart: "no"
     depends_on:
       kafka:
@@ -126,9 +128,9 @@ services:
     networks:
       - hotel_net
 
-  kafka_exporter:
+  kafka-exporter:
     image: danielqsj/kafka-exporter:v1.9.0
-    container_name: hotel_kafka_exporter
+    container_name: kafka-exporter
     restart: unless-stopped
     depends_on:
       kafka:
@@ -142,16 +144,16 @@ services:
       - hotel_net
 
   # ============================================================================
-  # 3. SECRET MANAGEMENT & ESO (HashiCorp Vault KV-v2 Secret Engine)
+  # 3. SECRET MANAGEMENT & ESO (HashiCorp Vault v2.2.0 KV-v2 Secret Engine)
   # ============================================================================
   vault:
-    image: hashicorp/vault:2.0.4
-    container_name: hotel_vault
+    image: hashicorp/vault:2.2.0
+    container_name: vault
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN:-root}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
       VAULT_ADDR: http://127.0.0.1:8200
     ports:
@@ -166,16 +168,16 @@ services:
     networks:
       - hotel_net
 
-  vault_init:
-    image: hashicorp/vault:2.0.4
-    container_name: hotel_vault_init
+  vault-init:
+    image: hashicorp/vault:2.2.0
+    container_name: vault-init
     restart: "no"
     depends_on:
       vault:
         condition: service_healthy
     environment:
       VAULT_ADDR: http://vault:8200
-      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-hotel_vault_dev_root_token_2026}
+      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-root}
       DB_HOST: postgres
       DB_USER: ${DB_USER:-hotel_admin}
       DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
@@ -197,7 +199,7 @@ services:
   # ============================================================================
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.1
-    container_name: hotel_keycloak
+    container_name: keycloak
     restart: unless-stopped
     command: ["start-dev", "--import-realm"]
     depends_on:
@@ -229,20 +231,22 @@ services:
   # ============================================================================
   # 5. CORE APPLICATION TIER (Microservices & Frontend)
   # ============================================================================
-  room-service:
+  hotel-room-service:
+    image: georgegxx/hotel-room-service:1.0.0
+    pull_policy: build
+    container_name: hotel-room-service
     build:
       context: ./backend
       dockerfile: Dockerfile
       args:
         SERVICE: room-service
-    container_name: hotel_room_service
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      otel-collector:
+      alloy:
         condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -253,26 +257,38 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
       DB_NAME: ${DB_NAME:-hotel_premium_db}
       REDIS_ADDR: redis:6379
-      OTEL_COLLECTOR_URL: otel-collector:4317
+      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
+      OTEL_COLLECTOR_URL: ${OTEL_COLLECTOR_URL:-alloy:4317}
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8081/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
-      - hotel_net
+      hotel_net:
+        aliases:
+          - room-service
 
-  stay-service:
+  hotel-stay-service:
+    image: georgegxx/hotel-stay-service:1.0.0
+    pull_policy: build
+    container_name: hotel-stay-service
     build:
       context: ./backend
       dockerfile: Dockerfile
       args:
         SERVICE: stay-service
-    container_name: hotel_stay_service
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       kafka:
         condition: service_healthy
-      otel-collector:
+      alloy:
         condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -282,26 +298,39 @@ services:
       DB_USER: ${DB_USER:-hotel_admin}
       DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
       DB_NAME: ${DB_NAME:-hotel_premium_db}
+      REDIS_ADDR: redis:6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
-      OTEL_COLLECTOR_URL: otel-collector:4317
+      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
+      OTEL_COLLECTOR_URL: ${OTEL_COLLECTOR_URL:-alloy:4317}
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8082/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
-      - hotel_net
+      hotel_net:
+        aliases:
+          - stay-service
 
-  billing-service:
+  hotel-billing-service:
+    image: georgegxx/hotel-billing-service:1.0.0
+    pull_policy: build
+    container_name: hotel-billing-service
     build:
       context: ./backend
       dockerfile: Dockerfile
       args:
         SERVICE: billing-service
-    container_name: hotel_billing_service
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      otel-collector:
+      redis:
+        condition: service_healthy
+      alloy:
         condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -311,48 +340,70 @@ services:
       DB_USER: ${DB_USER:-hotel_admin}
       DB_PASSWORD: ${DB_PASSWORD:-hotel_secure_password_2026}
       DB_NAME: ${DB_NAME:-hotel_premium_db}
-      OTEL_COLLECTOR_URL: otel-collector:4317
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: ${JWT_SECRET:-super_secret_hotel_jwt_key_at_least_32_characters_long_2026}
+      OTEL_COLLECTOR_URL: ${OTEL_COLLECTOR_URL:-alloy:4317}
     ports:
       - "8083:8083"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8083/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
-      - hotel_net
+      hotel_net:
+        aliases:
+          - billing-service
 
-  notification-worker:
+  hotel-notification-worker:
+    image: georgegxx/hotel-notification-worker:1.0.0
+    pull_policy: build
+    container_name: hotel-notification-worker
     build:
       context: ./backend
       dockerfile: Dockerfile
       args:
         SERVICE: notification-worker
-    container_name: hotel_notification_worker
     restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy
-      otel-collector:
+      alloy:
         condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
       NOTIFICATION_WORKER_PORT: 8084
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
-      OTEL_COLLECTOR_URL: otel-collector:4317
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OTEL_COLLECTOR_URL: ${OTEL_COLLECTOR_URL:-alloy:4317}
     ports:
       - "8084:8084"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8084/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
-      - hotel_net
+      hotel_net:
+        aliases:
+          - notification-worker
 
-  frontend:
+  hotel-frontend:
+    image: georgegxx/hotel-frontend:1.0.0
+    pull_policy: build
+    container_name: hotel-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
-    container_name: hotel_frontend
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     restart: unless-stopped
     depends_on:
-      room-service:
+      hotel-room-service:
         condition: service_started
-      stay-service:
+      hotel-stay-service:
         condition: service_started
     ports:
       - "${FRONTEND_PORT:-80}:80"
@@ -362,23 +413,25 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - hotel_net
+      hotel_net:
+        aliases:
+          - frontend
 
   # ============================================================================
-  # 6. API GATEWAY (Kong Gateway DB-Less v3.14.0.16)
+  # 6. API GATEWAY (Kong Gateway DB-Less v3.9.4)
   # ============================================================================
   kong:
-    image: kong/kong-gateway:3.14.0.16
-    container_name: hotel_kong
+    image: kong:3.9.4
+    container_name: kong
     restart: unless-stopped
     depends_on:
-      frontend:
+      hotel-frontend:
         condition: service_healthy
-      room-service:
+      hotel-room-service:
         condition: service_started
-      stay-service:
+      hotel-stay-service:
         condition: service_started
-      billing-service:
+      hotel-billing-service:
         condition: service_started
     environment:
       KONG_DATABASE: "off"
@@ -386,8 +439,9 @@ services:
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_GUI_URL: "http://localhost:8002"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
       KONG_TRACING_INSTRUMENTATIONS: "all"
       KONG_TRACING_SAMPLING_RATE: "1.0"
@@ -396,6 +450,7 @@ services:
     ports:
       - "${KONG_PROXY_PORT:-8000}:8000"   # Kong Gateway Public Ingress (Frontend, API, Auth)
       - "${KONG_ADMIN_PORT:-8001}:8001"   # Kong Admin & Prometheus Metrics
+      - "${KONG_MANAGER_PORT:-8002}:8002" # Kong Manager Dashboard GUI
     networks:
       - hotel_net
 
@@ -404,7 +459,7 @@ services:
   # ============================================================================
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.159.0
-    container_name: hotel_otel_collector
+    container_name: otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -420,7 +475,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.14.0
-    container_name: hotel_prometheus
+    container_name: prometheus
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -436,8 +491,8 @@ services:
       - hotel_net
 
   tempo:
-    image: grafana/tempo:3.0.3
-    container_name: hotel_tempo
+    image: grafana/tempo:3.0.5
+    container_name: tempo
     restart: unless-stopped
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
@@ -445,12 +500,17 @@ services:
       - tempo_data:/var/tempo
     ports:
       - "${TEMPO_PORT:-3200}:3200"   # Tempo HTTP query
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - hotel_net
 
   loki:
-    image: grafana/loki:3.7.4
-    container_name: hotel_loki
+    image: grafana/loki:3.7.8
+    container_name: loki
     restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yaml"]
     volumes:
@@ -458,17 +518,23 @@ services:
       - loki_data:/loki
     ports:
       - "${LOKI_PORT:-3100}:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - hotel_net
 
   alloy:
-    image: grafana/alloy:v1.19.1
-    container_name: hotel_alloy
+    image: grafana/alloy:v1.21.0
+    container_name: alloy
     restart: unless-stopped
     command:
       - "run"
       - "/etc/alloy/config.alloy"
       - "--server.http.listen-addr=0.0.0.0:3300"
+      - "--storage.path=/var/lib/alloy/data"
     volumes:
       - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
     ports:
@@ -477,8 +543,8 @@ services:
       - hotel_net
 
   grafana:
-    image: grafana/grafana:13.2.1
-    container_name: hotel_grafana
+    image: grafana/grafana:13.2.3
+    container_name: grafana
     restart: unless-stopped
     depends_on:
       - prometheus
@@ -488,11 +554,17 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor,correlations,flameGraph"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - hotel_net
 

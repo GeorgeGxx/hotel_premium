@@ -28,7 +28,7 @@ upstreams:
           http_statuses: [500, 502, 503]
           http_failures: 3
     targets:
-      - target: room-service:8081
+      - target: hotel-room-service:8081
         weight: 100
 
   - name: stay-upstream
@@ -55,7 +55,7 @@ upstreams:
           http_statuses: [500, 502, 503]
           http_failures: 3
     targets:
-      - target: stay-service:8082
+      - target: hotel-stay-service:8082
         weight: 100
 
   - name: billing-upstream
@@ -82,13 +82,32 @@ upstreams:
           http_statuses: [500, 502, 503]
           http_failures: 3
     targets:
-      - target: billing-service:8083
+      - target: hotel-billing-service:8083
+        weight: 100
+
+  - name: notification-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /api/v1/health
+        healthy:
+          interval: 5
+          http_statuses: [200]
+          successes: 2
+        unhealthy:
+          interval: 2
+          http_statuses: [429, 500, 503]
+          http_failures: 3
+          timeouts: 3
+    targets:
+      - target: hotel-notification-worker:8084
         weight: 100
 
   - name: frontend-upstream
     algorithm: round-robin
     targets:
-      - target: frontend:80
+      - target: hotel-frontend:80
         weight: 100
 
   - name: keycloak-upstream
@@ -98,7 +117,7 @@ upstreams:
         weight: 100
 
 # ==============================================================================
-# SERVICES & ROUTES
+# SERVICES & ROUTES (NORTH-SOUTH API GATEWAY)
 # ==============================================================================
 services:
   # 1. Frontend Web Ingress
@@ -126,12 +145,13 @@ services:
       - name: room-routes
         paths:
           - /api/v1/rooms
+          - /api/v1/health
         strip_path: false
         protocols:
           - http
           - https
 
-  # 3. Decoupled Microservice: Stay & Reservation Service
+  # 3. Decoupled Microservice: Stay, Reservations & Real-Time SSE Service
   - name: stay-service
     host: stay-upstream
     protocol: http
@@ -141,6 +161,7 @@ services:
       - name: stay-routes
         paths:
           - /api/v1/stays
+          - /api/v1/events/live
         strip_path: false
         protocols:
           - http
@@ -161,7 +182,22 @@ services:
           - http
           - https
 
-  # 5. Identity & Access Management (Keycloak)
+  # 5. Decoupled Microservice: Notification Worker
+  - name: notification-worker
+    host: notification-upstream
+    protocol: http
+    port: 8084
+    path: /
+    routes:
+      - name: notification-routes
+        paths:
+          - /api/v1/notifications
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # 6. Identity & Access Management (Keycloak OIDC Public Endpoints Only - No /admin exposed)
   - name: keycloak-service
     host: keycloak-upstream
     protocol: http
@@ -174,7 +210,6 @@ services:
           - /realms
           - /resources
           - /js
-          - /admin
         strip_path: false
         protocols:
           - http
@@ -193,19 +228,26 @@ plugins:
       bandwidth_metrics: true
       upstream_health_metrics: true
 
-  # 2. OpenTelemetry Tracing Plugin (W3C TraceContext Ingress)
+  # 2. OpenTelemetry Tracing Plugin (W3C TraceContext -> Grafana Alloy -> Tempo)
   - name: opentelemetry
     config:
-      endpoint: http://otel-collector:4318/v1/traces
+      traces_endpoint: http://alloy:4318/v1/traces
       resource_attributes:
-        service.name: kong-api-gateway
-        service.version: "3.14.0.16"
+        service.name: kong-gateway
+        service.version: "3.9.4"
       sampling_rate: 1.0
       queue:
         max_batch_size: 1
         max_coalescing_delay: 0.1
       propagation:
         default_format: w3c
+        extract:
+          - w3c
+          - b3
+        inject:
+          - preserve
+          - w3c
+      http_response_header_for_traceid: X-Trace-Id
 
   # 3. Cross-Origin Resource Sharing (CORS)
   - name: cors
@@ -225,12 +267,18 @@ plugins:
         - Content-Length
         - Content-Type
         - Authorization
+        - X-User-Role
+        - Idempotency-Key
+        - X-Idempotency-Key
+        - X-Correlation-ID
         - traceparent
         - tracestate
       exposed_headers:
         - Authorization
+        - X-Trace-Id
+        - X-Correlation-ID
         - traceparent
-      credentials: true
+      credentials: false
       max_age: 3600
 
   # 4. Global Anti-DoS Rate Limiting
@@ -240,3 +288,27 @@ plugins:
       policy: local
       fault_tolerant: true
       hide_client_headers: false
+
+  # 5. Request Size Limiting (10 MB max payload protection)
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10
+      size_unit: megabytes
+      require_content_length: false
+
+  # 6. Correlation ID Injection
+  - name: correlation-id
+    config:
+      header_name: X-Correlation-ID
+      generator: uuid#counter
+      echo_downstream: true
+
+  # 7. Defensive HTTP Security Response Headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+          - "Permissions-Policy: geolocation=(), microphone=(), camera=()"

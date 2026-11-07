@@ -23,7 +23,7 @@ groups:
           summary: "Kong API Gateway ingress is unreachable"
           description: "Kong API Gateway on {{ $labels.instance }} is down."
 
-      # 3. Apache Kafka 7.8.0 Consumer Lag Alert
+      # 3. Apache Kafka 8.3.2 Consumer Lag Alert
       - alert: KafkaHighConsumerLag
         expr: sum(kafka_consumergroup_lag{topic=~"hotel.*"}) by (consumergroup, topic) > 50
         for: 1m
@@ -33,6 +33,17 @@ groups:
         annotations:
           summary: "High Kafka consumer lag on group {{ $labels.consumergroup }}"
           description: "Kafka consumer group {{ $labels.consumergroup }} has lag > 50 messages on topic {{ $labels.topic }}."
+
+      # 3b. Apache Kafka 8.3.2 Dead Letter Queue (DLQ) Alert
+      - alert: KafkaDLQMessagesDetected
+        expr: increase(kafka_messages_dlq_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          tier: messaging
+        annotations:
+          summary: "Poison-pill message routed to Kafka DLQ ({{ $labels.dlq_topic }})"
+          description: "Unrecoverable message detected on {{ $labels.original_topic }} and routed to {{ $labels.dlq_topic }} (reason: {{ $labels.reason }})."
 
       # 4. HashiCorp Vault Availability Alert
       - alert: VaultInstanceDown

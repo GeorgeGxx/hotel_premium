@@ -28,9 +28,30 @@
         "clientRole": false
       },
       {
+        "id": "role-manager-id",
+        "name": "MANAGER",
+        "description": "Hotel Operations Manager with rate, folio, and shift management privileges",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "id": "role-receptionist-id",
+        "name": "RECEPTIONIST",
+        "description": "Front Desk Receptionist with permissions to manage check-in, check-out, and reservations",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "id": "role-housekeeping-id",
+        "name": "HOUSEKEEPING",
+        "description": "Housekeeping staff with permissions to update room cleaning and maintenance status",
+        "composite": false,
+        "clientRole": false
+      },
+      {
         "id": "role-user-id",
         "name": "USER",
-        "description": "Front Desk Receptionist with permissions to view, create, edit, and cancel reservations",
+        "description": "Authenticated hotel guest or basic operator",
         "composite": false,
         "clientRole": false
       }
@@ -56,10 +77,13 @@
         "http://localhost/*",
         "http://127.0.0.1/*",
         "http://localhost:8000/*",
-        "*"
+        "http://localhost:5173/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://localhost:8000",
+        "http://localhost:5173"
       ]
     },
     {
@@ -92,6 +116,7 @@
       ],
       "realmRoles": [
         "ADMIN",
+        "MANAGER",
         "USER"
       ]
     },
@@ -111,6 +136,7 @@
         }
       ],
       "realmRoles": [
+        "RECEPTIONIST",
         "USER"
       ]
     }

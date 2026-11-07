@@ -1,3 +1,8 @@
+// ==============================================================================
+// GRAFANA ALLOY v1.21.0 — UNIFIED TELEMETRY PIPELINE (OTLP + DOCKER LOGS)
+// Forwards Traces -> Tempo (:4317), Logs -> Loki (:3100), Metrics -> Prometheus (:9090)
+// ==============================================================================
+
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -7,8 +12,20 @@ otelcol.receiver.otlp "default" {
   }
 
   output {
+    traces  = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout         = "1s"
+  send_batch_size = 512
+
+  output {
     traces  = [otelcol.exporter.otlp.tempo.input]
     logs    = [otelcol.exporter.loki.default.input]
+    metrics = [otelcol.exporter.prometheus.default.input]
   }
 }
 
@@ -23,6 +40,10 @@ otelcol.exporter.otlp "tempo" {
 
 otelcol.exporter.loki "default" {
   forward_to = [loki.write.default.receiver]
+}
+
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.default.receiver]
 }
 
 loki.write "default" {
