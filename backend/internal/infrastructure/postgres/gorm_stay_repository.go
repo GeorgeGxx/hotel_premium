@@ -52,13 +52,13 @@ func (r *GormStayRepository) FindAll(ctx context.Context, status *stay.Status) (
 		rows = r.db.WithContext(ctx).Raw(query)
 	}
 
-	sqlRows, err := rows.Rows()
+	var sqlRows, err = rows.Rows()
 	if err != nil {
 		return nil, fmt.Errorf("gorm: failed to query stays: %w", err)
 	}
 	defer sqlRows.Close()
 
-	var result []*stay.StayDetails
+	result := make([]*stay.StayDetails, 0)
 	for sqlRows.Next() {
 		var d stay.StayDetails
 		err := sqlRows.Scan(

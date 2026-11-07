@@ -77,7 +77,7 @@ func main() {
 			"dlq":     cfg.KafkaStayTopic + ".DLQ",
 		})
 	})
-	mux.HandleFunc("GET /api/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
+	notifHandler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 		if telemetry.Tracer != nil {
 			var span trace.Span
@@ -95,7 +95,9 @@ func main() {
 			"processed_events":    processedEvents.Load(),
 			"deduplicated_events": deduplicatedEvents.Load(),
 		})
-	})
+	}
+	mux.HandleFunc("GET /api/v1/notifications", notifHandler)
+	mux.HandleFunc("GET /api/v1/notifications/", notifHandler)
 	mux.Handle("GET /metrics", promhttp.Handler())
 	swagger.RegisterSwaggerUIMux(mux, "notification-worker")
 

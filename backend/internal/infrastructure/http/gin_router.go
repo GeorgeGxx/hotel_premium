@@ -191,6 +191,8 @@ func RegisterBillingRoutes(group *gin.RouterGroup, billingHandler *handler.Billi
 	if billingHandler == nil {
 		return
 	}
+	group.GET("", GinAdapter(billingHandler.ListProducts))
+	group.GET("/", GinAdapter(billingHandler.ListProducts))
 	group.GET("/products", GinAdapter(billingHandler.ListProducts))
 	group.POST("/charges", GinAdapter(billingHandler.AddStayCharge))
 	group.GET("/stays/:id/charges", GinAdapter(billingHandler.ListStayCharges))

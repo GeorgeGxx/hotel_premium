@@ -1655,10 +1655,13 @@ function Start-AutomatedTunnels {
         $pidFile = Join-Path $PSScriptRoot "scripts\.tunnels.pid"
         $isRunning = $false
         if (Test-Path $pidFile) {
-            $daemonPid = Get-Content $pidFile -ErrorAction SilentlyContinue
-            if ($daemonPid -and (Get-Process -Id [int]$daemonPid -ErrorAction SilentlyContinue)) {
-                $isRunning = $true
-                Write-Host "  [OK] Network tunnels supervisor is active in background (PID: $daemonPid)." -ForegroundColor Green
+            $rawPid = Get-Content $pidFile -ErrorAction SilentlyContinue
+            if ($rawPid -and [int]::TryParse($rawPid.Trim(), [ref]$null)) {
+                $pidInt = [int]$rawPid.Trim()
+                if (Get-Process -Id $pidInt -ErrorAction SilentlyContinue) {
+                    $isRunning = $true
+                    Write-Host "  [OK] Network tunnels supervisor is active in background (PID: $pidInt)." -ForegroundColor Green
+                }
             }
         }
         if (-not $isRunning) {
