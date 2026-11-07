@@ -52,15 +52,15 @@ metadata:
   namespace: dev
 spec:
   mtls:
-    mode: STRICT
+    mode: PERMISSIVE
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
 metadata:
-  name: hotel-services-mtls
+  name: kong-proxy-mtls
   namespace: dev
 spec:
-  host: "*.dev.svc.cluster.local"
+  host: kong-proxy.dev.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
@@ -75,6 +75,61 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: room-service-mtls
+  namespace: dev
+spec:
+  host: room-service.dev.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: stay-service-mtls
+  namespace: dev
+spec:
+  host: stay-service.dev.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: billing-service-mtls
+  namespace: dev
+spec:
+  host: billing-service.dev.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: notification-worker-mtls
+  namespace: dev
+spec:
+  host: notification-worker.dev.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: hotel-frontend-mtls
+  namespace: dev
+spec:
+  host: hotel-frontend.dev.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -98,11 +153,9 @@ spec:
       to:
         - operation:
             ports: ["80", "5173", "8000", "8081", "8082", "8083", "8084", "5432", "6379", "9092"]
-    # Allow Prometheus & Alloy in observability namespace to scrape /metrics and health
-    - from:
-        - source:
-            namespaces: ["observability"]
-      to:
+    # Allow Prometheus and monitoring tools to scrape metrics & health endpoints
+    - to:
         - operation:
             methods: ["GET"]
-            paths: ["/metrics", "/api/v1/health"]
+            paths: ["/metrics*", "/api/v1/health*", "/ready*", "/status*", "/live*"]
+            ports: ["8001", "8081", "8082", "8083", "8084", "5173"]

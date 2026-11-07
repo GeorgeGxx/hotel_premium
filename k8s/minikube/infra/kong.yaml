@@ -252,13 +252,13 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-    - name: proxy
+    - name: http-proxy
       port: 8000
       targetPort: 8000
-    - name: admin
+    - name: http-admin
       port: 8001
       targetPort: 8001
-    - name: manager
+    - name: http-manager
       port: 8002
       targetPort: 8002
   selector:

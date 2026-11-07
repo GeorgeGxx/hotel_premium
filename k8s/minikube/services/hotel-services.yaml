@@ -1163,7 +1163,7 @@ spec:
     - name: http
       port: 80
       targetPort: 80
-    - name: dev
+    - name: http-dev
       port: 5173
       targetPort: 5173
   selector:

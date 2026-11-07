@@ -52,7 +52,7 @@ rules:
     resources: ["telemetries"]
     verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
   - apiGroups: ["extensions.istio.io"]
-    resources: ["wasmplugins"]
+    resources: ["wasmplugins", "trafficextensions"]
     verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
   - apiGroups: ["admissionregistration.k8s.io"]
     resources:
