@@ -66,7 +66,7 @@ export const LateralNotificationToast: React.FC<LateralNotificationToastProps> =
   };
 
   return (
-    <div className="fixed top-20 right-4 sm:right-6 z-[9999] max-w-sm w-full pointer-events-auto animate-in slide-in-from-right-8 fade-in duration-300">
+    <div className="fixed top-20 right-3 sm:right-6 left-3 sm:left-auto z-[9999] max-w-sm w-auto sm:w-full pointer-events-auto animate-in slide-in-from-right-8 fade-in duration-300">
       <div
         className={`bg-slate-900/95 backdrop-blur-xl rounded-2xl border p-4 shadow-2xl ${getBorderColor(
           notification.category

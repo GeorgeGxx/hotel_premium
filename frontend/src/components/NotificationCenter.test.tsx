@@ -74,4 +74,22 @@ describe('NotificationCenter Component', () => {
 
     expect(handleMarkRead).toHaveBeenCalledTimes(1);
   });
+
+  it('is responsive with mobile backdrop and closes when close button is clicked', () => {
+    render(
+      <NotificationCenter
+        notifications={mockNotifications}
+        onMarkAllAsRead={vi.fn()}
+        onClearAll={vi.fn()}
+        onDismissNotification={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Open Notifications Center/i }));
+    expect(screen.getByText('Live Operations Feed')).toBeInTheDocument();
+
+    const closeBtn = screen.getByTitle('Close feed');
+    fireEvent.click(closeBtn);
+    expect(screen.queryByText('Live Operations Feed')).not.toBeInTheDocument();
+  });
 });
