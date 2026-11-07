@@ -167,7 +167,6 @@ function Show-LocalPlatformUrls {
     Write-Host "│ DASHBOARD / SERVICE          │ LOCAL URL                                  │ CREDENTIALS    │" -ForegroundColor Cyan
     Write-Host "│ 🏨 Hotel Premium Frontend    │ http://localhost:5173                      │ Open           │" -ForegroundColor White
     Write-Host "│ 🦍 Kong API Gateway Proxy    │ http://localhost:8000                      │ Public Ingress │" -ForegroundColor White
-    Write-Host "│ 🦍 Kong Admin & Metrics      │ http://localhost:8001/status               │ Public/Admin   │" -ForegroundColor White
     Write-Host "│ 🦍 Kong Manager Dashboard    │ http://localhost:8002                      │ GUI Dashboard  │" -ForegroundColor White
     Write-Host "│ 📜 Swagger UI (Room Service) │ http://localhost:8081/swagger/index.html   │ Interactive UI │" -ForegroundColor White
     Write-Host "│ 📜 Swagger UI (Stay Service) │ http://localhost:8082/swagger/index.html   │ Interactive UI │" -ForegroundColor White
