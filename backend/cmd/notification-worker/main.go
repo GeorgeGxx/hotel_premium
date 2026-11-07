@@ -78,6 +78,14 @@ func main() {
 		})
 	})
 	mux.HandleFunc("GET /api/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
+		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+		if telemetry.Tracer != nil {
+			var span trace.Span
+			_, span = telemetry.Tracer.Start(ctx, "notification-worker: GET /api/v1/notifications",
+				trace.WithSpanKind(trace.SpanKindServer),
+			)
+			defer span.End()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"service":             "notification-worker",
