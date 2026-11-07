@@ -10,6 +10,7 @@ import { GuestComparisonModal } from './components/GuestComparisonModal';
 import { ReservationsManager } from './components/ReservationsManager';
 import {
   Room,
+  RoomStatus,
   CheckInFormData,
   CurrentUser,
   GuestBookingRequest,
@@ -63,7 +64,17 @@ export const App: React.FC = () => {
         fetchRooms(),
         fetchStays(),
       ]);
-      setRooms(roomsData);
+      // Reconcile room status with active stays if needed
+      const reconciledRooms = roomsData.map((room) => {
+        const hasActiveStay = staysData.some(
+          (s) => (s.room_id === room.id || s.room_number === room.number) && s.status === 'ACTIVE'
+        );
+        if (hasActiveStay && room.status === 'AVAILABLE') {
+          return { ...room, status: 'OCCUPIED' as RoomStatus };
+        }
+        return room;
+      });
+      setRooms(reconciledRooms);
       setStays(staysData);
     } catch (err) {
       console.warn('Initial load error:', err);
@@ -140,6 +151,7 @@ export const App: React.FC = () => {
     });
 
     setStays((prev) => [created, ...prev]);
+    await updateRoomStatus(formData.roomId, 'OCCUPIED');
     setRooms((prev) =>
       prev.map((r) => (r.id === formData.roomId ? { ...r, status: 'OCCUPIED' } : r))
     );
@@ -178,15 +190,16 @@ export const App: React.FC = () => {
     if (!confirm) return;
 
     // Find active stay for this room if any
-    const activeStay = stays.find((s) => s.room_id === room.id && s.status === 'ACTIVE');
+    const activeStay = stays.find(
+      (s) => (s.room_id === room.id || s.room_number === room.number) && s.status === 'ACTIVE'
+    );
     if (activeStay) {
       await checkOutStay(activeStay.id);
       setStays((prev) =>
         prev.map((s) => (s.id === activeStay.id ? { ...s, status: 'CHECKED_OUT' } : s))
       );
-    } else {
-      await updateRoomStatus(room.id, 'DIRTY');
     }
+    await updateRoomStatus(room.id, 'DIRTY');
 
     setRooms((prev) =>
       prev.map((r) => (r.id === room.id ? { ...r, status: 'DIRTY' } : r))
@@ -208,9 +221,15 @@ export const App: React.FC = () => {
     const created = await createStay(dto);
     setStays((prev) => [created, ...prev]);
     if (dto.status === 'ACTIVE') {
-      setRooms((prev) =>
-        prev.map((r) => (r.id === dto.room_id ? { ...r, status: 'OCCUPIED' } : r))
+      const matchingRoom = rooms.find(
+        (r) => r.id === dto.room_id || r.number === created.room_number
       );
+      if (matchingRoom) {
+        await updateRoomStatus(matchingRoom.id, 'OCCUPIED');
+        setRooms((prev) =>
+          prev.map((r) => (r.id === matchingRoom.id ? { ...r, status: 'OCCUPIED' } : r))
+        );
+      }
     }
   };
 
@@ -223,9 +242,15 @@ export const App: React.FC = () => {
     await cancelStay(id);
     const target = stays.find((s) => s.id === id);
     if (target && target.status === 'ACTIVE') {
-      setRooms((prev) =>
-        prev.map((r) => (r.id === target.room_id ? { ...r, status: 'AVAILABLE' } : r))
+      const matchingRoom = rooms.find(
+        (r) => r.id === target.room_id || r.number === target.room_number
       );
+      if (matchingRoom) {
+        await updateRoomStatus(matchingRoom.id, 'AVAILABLE');
+        setRooms((prev) =>
+          prev.map((r) => (r.id === matchingRoom.id ? { ...r, status: 'AVAILABLE' } : r))
+        );
+      }
     }
     setStays((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status: 'CANCELLED' } : s))
@@ -236,9 +261,15 @@ export const App: React.FC = () => {
     await checkOutStay(id);
     const target = stays.find((s) => s.id === id);
     if (target) {
-      setRooms((prev) =>
-        prev.map((r) => (r.id === target.room_id ? { ...r, status: 'DIRTY' } : r))
+      const matchingRoom = rooms.find(
+        (r) => r.id === target.room_id || r.number === target.room_number
       );
+      if (matchingRoom) {
+        await updateRoomStatus(matchingRoom.id, 'DIRTY');
+        setRooms((prev) =>
+          prev.map((r) => (r.id === matchingRoom.id ? { ...r, status: 'DIRTY' } : r))
+        );
+      }
     }
     setStays((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status: 'CHECKED_OUT' } : s))
