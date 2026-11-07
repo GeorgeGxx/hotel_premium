@@ -415,14 +415,17 @@ export async function updateStay(stayId: string, dto: UpdateStayDTO): Promise<St
       if (s.id !== stayId) return s;
       const updatedTotalNights = dto.total_nights ?? s.total_nights;
       const updatedRate = dto.nightly_rate ?? s.nightly_rate;
+      const updatedDeposit = dto.deposit_amount ?? s.deposit_amount;
+      const updatedTotal = updatedTotalNights * updatedRate;
       return {
         ...s,
         check_in_date: dto.check_in_date ?? s.check_in_date,
         check_out_date: dto.check_out_date ?? s.check_out_date,
         total_nights: updatedTotalNights,
         nightly_rate: updatedRate,
-        deposit_amount: dto.deposit_amount ?? s.deposit_amount,
-        total_amount: updatedTotalNights * updatedRate,
+        deposit_amount: updatedDeposit,
+        total_amount: updatedTotal,
+        payment_status: updatedDeposit >= updatedTotal ? 'PAID' : (updatedDeposit > 0 ? 'PARTIAL' : 'PENDING'),
         notes: dto.notes ?? s.notes,
       };
     });

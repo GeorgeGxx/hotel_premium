@@ -21,17 +21,28 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle,
+  CreditCard,
+  QrCode,
+  Building2,
+  DollarSign,
+  Receipt,
+  Smartphone,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface ReservationsManagerProps {
   stays: StayDetails[];
   rooms: Room[];
   currentUser: CurrentUser;
-  onRefreshStays: () => void;
+  onRefreshStays?: () => void;
   onCreateStay: (dto: CreateStayDTO) => Promise<void>;
   onUpdateStay: (id: string, dto: UpdateStayDTO) => Promise<void>;
   onCancelStay: (id: string) => Promise<void>;
-  onCheckOutStay: (id: string) => Promise<void>;
+  onCheckOutStay: (
+    id: string,
+    settlement?: { deposit_amount: number; payment_status: 'PAID'; notes?: string }
+  ) => Promise<void>;
   showToast: (msg: string) => void;
 }
 
@@ -49,6 +60,23 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [editingStay, setEditingStay] = useState<StayDetails | null>(null);
+
+  // Folio Settlement & Zero-Balance Departure state
+  const [settlementStay, setSettlementStay] = useState<StayDetails | null>(null);
+  const [settlementTender, setSettlementTender] = useState<
+    'CARD_ON_FILE' | 'DIGITAL_LINK' | 'CITY_LEDGER' | 'CASH'
+  >('CARD_ON_FILE');
+  const [corporateAccountRef, setCorporateAccountRef] = useState<string>(
+    'Tech Horizon Global Corp • PO-8921'
+  );
+  const [isCopiedLink, setIsCopiedLink] = useState<boolean>(false);
+  const [isSettlingFolio, setIsSettlingFolio] = useState<boolean>(false);
+
+  const getBalanceDue = (stay: StayDetails): number => {
+    const total = stay.total_amount || stay.total_nights * stay.nightly_rate;
+    const deposit = stay.deposit_amount || 0;
+    return Math.max(0, total - deposit);
+  };
 
   // Form states for creation
   const [createRoomId, setCreateRoomId] = useState<string>(rooms[0]?.id || '');
@@ -181,8 +209,16 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
   };
 
   const handleCheckOutClick = async (stay: StayDetails) => {
+    const balance = getBalanceDue(stay);
+    if (balance > 0.01 && stay.payment_status !== 'PAID') {
+      // Zero-Balance departure protection: intercept with Folio Settlement!
+      setSettlementStay(stay);
+      setSettlementTender('CARD_ON_FILE');
+      return;
+    }
+
     const ok = window.confirm(
-      `Process check-out for Room ${stay.room_number}? Room will transition to DIRTY.`
+      `Confirm check-out for Room ${stay.room_number}? Folio is 100% settled ($0.00 balance). Room will transition to DIRTY.`
     );
     if (!ok) return;
 
@@ -191,6 +227,47 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
       showToast(`Guest checked out. Room ${stay.room_number} scheduled for housekeeping.`);
     } catch {
       alert('Check-out failed.');
+    }
+  };
+
+  const handleConfirmSettlement = async () => {
+    if (!settlementStay) return;
+    setIsSettlingFolio(true);
+    const balance = getBalanceDue(settlementStay);
+    const totalAmount =
+      settlementStay.total_amount ||
+      settlementStay.total_nights * settlementStay.nightly_rate;
+    const tenderLabel =
+      settlementTender === 'CARD_ON_FILE'
+        ? 'Pre-Auth Visa •••• 4242'
+        : settlementTender === 'DIGITAL_LINK'
+        ? 'Digital Mobile Pay Link (Apple Pay / QR)'
+        : settlementTender === 'CITY_LEDGER'
+        ? `City Ledger AR (${corporateAccountRef || 'Corporate'})`
+        : 'Cash Reception Drawer';
+
+    try {
+      // 1. Update stay deposit in backend/memory
+      await onUpdateStay(settlementStay.id, {
+        deposit_amount: totalAmount,
+        notes: `${settlementStay.notes || ''} [Folio Settled: $${balance.toFixed(2)} USD via ${tenderLabel}]`.trim(),
+      });
+
+      // 2. Complete check-out with settlement metadata
+      await onCheckOutStay(settlementStay.id, {
+        deposit_amount: totalAmount,
+        payment_status: 'PAID',
+        notes: `Folio Settled: $${balance.toFixed(2)} USD via ${tenderLabel}`,
+      });
+
+      showToast(
+        `Folio settled ($${balance.toFixed(2)} USD via ${tenderLabel}). Room ${settlementStay.room_number} marked DIRTY.`
+      );
+      setSettlementStay(null);
+    } catch {
+      alert('Settlement failed. Please try again.');
+    } finally {
+      setIsSettlingFolio(false);
     }
   };
 
@@ -381,12 +458,40 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                             {stay.payment_status}
                           </span>
                         </div>
+                        {getBalanceDue(stay) > 0.01 && stay.status !== 'CHECKED_OUT' && stay.status !== 'CANCELLED' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSettlementStay(stay);
+                              setSettlementTender('CARD_ON_FILE');
+                            }}
+                            className="mt-1 text-[10px] font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors"
+                            title="Click to settle outstanding folio balance"
+                          >
+                            <CreditCard className="w-3 h-3 text-amber-400" />
+                            Due: ${getBalanceDue(stay).toFixed(2)} &bull; Settle
+                          </button>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4">{getStatusBadge(stay.status)}</td>
 
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Settle Folio Quick Action for stays with balance due */}
+                          {getBalanceDue(stay) > 0.01 && stay.status !== 'CHECKED_OUT' && stay.status !== 'CANCELLED' && (
+                            <button
+                              onClick={() => {
+                                setSettlementStay(stay);
+                                setSettlementTender('CARD_ON_FILE');
+                              }}
+                              title="Settle Folio Balance ($ Due)"
+                              className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                            </button>
+                          )}
+
                           {/* Edit available for basic_user and admin_user if not finished */}
                           {stay.status !== 'CHECKED_OUT' && stay.status !== 'CANCELLED' && (
                             <button
@@ -721,6 +826,271 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Folio Settlement & Zero-Balance Departure Modal */}
+      {settlementStay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-xl w-full shadow-2xl relative text-left">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-400">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-bold text-white tracking-tight">
+                      Folio Settlement &amp; Billing
+                    </h3>
+                    <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                      Zero-Balance Policy
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Room {settlementStay.room_number} &bull; {settlementStay.guest_name} &bull; {settlementStay.category_name}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSettlementStay(null)}
+                className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Financial Statement Card */}
+            <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 mb-5">
+              <div className="grid grid-cols-3 gap-3 text-center pb-3 border-b border-slate-800/80">
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Stay</span>
+                  <p className="text-base font-bold text-white mt-0.5">
+                    ${(settlementStay.total_amount || settlementStay.total_nights * settlementStay.nightly_rate).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Deposits Paid</span>
+                  <p className="text-base font-bold text-emerald-400 mt-0.5">
+                    -${(settlementStay.deposit_amount || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className="bg-amber-500/10 rounded-xl p-1.5 border border-amber-500/20">
+                  <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider">Outstanding Due</span>
+                  <p className="text-lg font-black text-amber-400 mt-0.5">
+                    ${getBalanceDue(settlementStay).toFixed(2)} USD
+                  </p>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 text-center">
+                Departure requires settling all outstanding room charges in full. Choose payment tender below:
+              </p>
+            </div>
+
+            {/* Tender Options */}
+            <label className="block text-xs font-semibold text-slate-300 mb-2">
+              Select Payment Tender (Alternative Payment Methods)
+            </label>
+
+            <div className="space-y-2.5 mb-5 max-h-[300px] overflow-y-auto pr-1">
+              {/* Option 1: Pre-Auth Card on file */}
+              <button
+                type="button"
+                onClick={() => setSettlementTender('CARD_ON_FILE')}
+                className={`w-full text-left p-3.5 rounded-2xl border text-xs transition-all flex items-start justify-between ${
+                  settlementTender === 'CARD_ON_FILE'
+                    ? 'bg-amber-500/10 border-amber-500 text-amber-300 shadow-md'
+                    : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 mt-0.5">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-white">Pre-Authorized Card on File</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-emerald-500/30">
+                        Visa &bull;&bull;&bull;&bull; 4242 (Hold Active)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Instant capture against tokenized card registered at check-in (PCI-DSS compliant).
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-amber-400 mt-1 shrink-0">
+                  ${getBalanceDue(settlementStay).toFixed(2)}
+                </span>
+              </button>
+
+              {/* Option 2: Digital Payment Link / QR */}
+              <button
+                type="button"
+                onClick={() => setSettlementTender('DIGITAL_LINK')}
+                className={`w-full text-left p-3.5 rounded-2xl border text-xs transition-all flex items-start justify-between ${
+                  settlementTender === 'DIGITAL_LINK'
+                    ? 'bg-cyan-500/10 border-cyan-500 text-cyan-300 shadow-md'
+                    : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 rounded-xl bg-slate-800 border border-slate-700 text-cyan-400 mt-0.5">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-white">Digital Payment Link &amp; Mobile QR</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                        Apple Pay &bull; Google Pay &bull; Webhook
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Guest scans on mobile device or receives link via SMS/WhatsApp for instant authorization.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-cyan-400 mt-1 shrink-0">
+                  ${getBalanceDue(settlementStay).toFixed(2)}
+                </span>
+              </button>
+
+              {/* Drawer for Digital Link */}
+              {settlementTender === 'DIGITAL_LINK' && (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-cyan-500/30 text-xs space-y-2 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-400">Generated Secure Checkout URL:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(
+                          `https://pay.hotelpremium.io/folio/${settlementStay.id}?due=${getBalanceDue(settlementStay)}`
+                        );
+                        setIsCopiedLink(true);
+                        setTimeout(() => setIsCopiedLink(false), 2500);
+                      }}
+                      className="text-[10px] font-bold text-cyan-300 hover:text-white flex items-center gap-1 bg-cyan-950/60 px-2.5 py-1 rounded-lg border border-cyan-500/40 transition-colors"
+                    >
+                      {isCopiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {isCopiedLink ? 'Copied to Clipboard!' : 'Copy Payment Link'}
+                    </button>
+                  </div>
+                  <div className="p-2 bg-slate-900 rounded-xl font-mono text-[11px] text-slate-300 border border-slate-800 break-all select-all">
+                    https://pay.hotelpremium.io/folio/{settlementStay.id}?due={getBalanceDue(settlementStay)}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-400">
+                    <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Direct SMS &amp; WhatsApp notification ready for {settlementStay.guest_phone || '+1 415 555 2671'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Option 3: Corporate Account / City Ledger */}
+              <button
+                type="button"
+                onClick={() => setSettlementTender('CITY_LEDGER')}
+                className={`w-full text-left p-3.5 rounded-2xl border text-xs transition-all flex items-start justify-between ${
+                  settlementTender === 'CITY_LEDGER'
+                    ? 'bg-purple-500/10 border-purple-500 text-purple-300 shadow-md'
+                    : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 rounded-xl bg-slate-800 border border-slate-700 text-purple-400 mt-0.5">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-white">Corporate City Ledger (Direct Billing)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500/30">
+                        AR 30-Day Term Invoice
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Transfer outstanding folio to registered company corporate master account with B2B terms.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-purple-400 mt-1 shrink-0">
+                  ${getBalanceDue(settlementStay).toFixed(2)}
+                </span>
+              </button>
+
+              {settlementTender === 'CITY_LEDGER' && (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-purple-500/30 text-xs space-y-1.5 animate-fade-in">
+                  <label className="block text-[11px] font-semibold text-purple-300">
+                    Corporate Master Account &bull; Client PO Reference:
+                  </label>
+                  <input
+                    type="text"
+                    value={corporateAccountRef}
+                    onChange={(e) => setCorporateAccountRef(e.target.value)}
+                    placeholder="e.g. Tech Horizon Global Corp • PO-8921"
+                    className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              )}
+
+              {/* Option 4: Cash Reception Settlement */}
+              <button
+                type="button"
+                onClick={() => setSettlementTender('CASH')}
+                className={`w-full text-left p-3.5 rounded-2xl border text-xs transition-all flex items-start justify-between ${
+                  settlementTender === 'CASH'
+                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300 shadow-md'
+                    : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 rounded-xl bg-slate-800 border border-slate-700 text-emerald-400 mt-0.5">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-white">Cash Reception Settlement</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                        Front Desk Cashier
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Guest provides physical cash currency at front desk; registered in daily cash shift.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-emerald-400 mt-1 shrink-0">
+                  ${getBalanceDue(settlementStay).toFixed(2)}
+                </span>
+              </button>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSettlementStay(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-all"
+              >
+                Cancel Departure
+              </button>
+
+              <button
+                type="button"
+                disabled={isSettlingFolio}
+                onClick={handleConfirmSettlement}
+                className="px-5 py-2.5 text-xs font-bold rounded-xl text-slate-950 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 transition-all shadow-md shadow-amber-500/20 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <CheckCircle className="w-4 h-4 text-slate-950" />
+                <span>
+                  {isSettlingFolio
+                    ? 'Settling & Authorizing...'
+                    : `Settle Folio ($${getBalanceDue(settlementStay).toFixed(2)}) & Check-Out`}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

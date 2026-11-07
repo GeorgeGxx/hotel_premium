@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ReservationsManager } from './ReservationsManager';
 import { StayDetails, Room, CurrentUser } from '../types/hotel';
 
@@ -115,5 +115,49 @@ describe('ReservationsManager Component Tests', () => {
     fireEvent.click(newBtn);
 
     expect(screen.getByText('Create New VIP Reservation')).toBeInTheDocument();
+  });
+
+  it('displays Due Settle pill for partial stays and opens Folio Settlement modal', async () => {
+    const handleUpdateStay = vi.fn().mockResolvedValue(undefined);
+    const handleCheckOutStay = vi.fn().mockResolvedValue(undefined);
+    const handleToast = vi.fn();
+
+    render(
+      <ReservationsManager
+        stays={mockStays}
+        rooms={mockRooms}
+        currentUser={mockUser}
+        onRefreshStays={vi.fn()}
+        onCreateStay={vi.fn()}
+        onUpdateStay={handleUpdateStay}
+        onCancelStay={vi.fn()}
+        onCheckOutStay={handleCheckOutStay}
+        showToast={handleToast}
+      />
+    );
+
+    // Verify Due pill is rendered
+    expect(screen.getByText(/Due: \$130.00/i)).toBeInTheDocument();
+
+    // Click on Due Settle button
+    const dueBtn = screen.getByRole('button', { name: /Due: \$130.00 • Settle/i });
+    fireEvent.click(dueBtn);
+
+    // Verify Folio Settlement modal opens
+    expect(screen.getByText('Folio Settlement & Billing')).toBeInTheDocument();
+    expect(screen.getByText('Zero-Balance Policy')).toBeInTheDocument();
+    expect(screen.getByText(/Pre-Authorized Card on File/i)).toBeInTheDocument();
+    expect(screen.getByText(/Digital Payment Link & Mobile QR/i)).toBeInTheDocument();
+    expect(screen.getByText(/Corporate City Ledger/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cash Reception Settlement/i)).toBeInTheDocument();
+
+    // Confirm settlement
+    const settleBtn = screen.getByRole('button', { name: /Settle Folio \(\$130.00\) & Check-Out/i });
+    fireEvent.click(settleBtn);
+
+    await waitFor(() => {
+      expect(handleUpdateStay).toHaveBeenCalledTimes(1);
+      expect(handleCheckOutStay).toHaveBeenCalledTimes(1);
+    });
   });
 });

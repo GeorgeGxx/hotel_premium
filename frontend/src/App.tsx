@@ -281,7 +281,10 @@ export const App: React.FC = () => {
     );
   };
 
-  const handleCheckOutStayFromManager = async (id: string) => {
+  const handleCheckOutStayFromManager = async (
+    id: string,
+    settlement?: { deposit_amount: number; payment_status: 'PAID'; notes?: string }
+  ) => {
     await checkOutStay(id);
     const target = stays.find((s) => s.id === id);
     if (target) {
@@ -296,7 +299,19 @@ export const App: React.FC = () => {
       }
     }
     setStays((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'CHECKED_OUT' } : s))
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: 'CHECKED_OUT',
+              deposit_amount: settlement?.deposit_amount ?? s.deposit_amount,
+              payment_status: settlement?.payment_status ?? s.payment_status,
+              notes: settlement?.notes
+                ? `${s.notes || ''} [Folio Settled: ${settlement.notes}]`.trim()
+                : s.notes,
+            }
+          : s
+      )
     );
   };
 
