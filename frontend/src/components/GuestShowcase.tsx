@@ -87,44 +87,45 @@ export const GuestShowcase: React.FC<GuestShowcaseProps> = ({
 
   return (
     <div className="space-y-10">
-      {/* Editorial Hero Section */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/40 text-white p-8 sm:p-14 shadow-2xl border border-slate-800">
-        <div className="relative z-10 max-w-3xl space-y-5">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 backdrop-blur-md text-amber-300 text-xs font-semibold uppercase tracking-wider border border-amber-500/20">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Exquisite Luxury Stays &bull; Waterfront Sanctuary</span>
+      {/* Editorial Hero Section (Compact & Stylized) */}
+      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-slate-900/90 via-slate-950/80 to-amber-950/30 text-white p-5 sm:px-8 sm:py-6 shadow-xl border border-slate-800/80 backdrop-blur-md">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 text-[11px] font-semibold tracking-wider border border-amber-500/20">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>Exquisite Luxury Stays &bull; Waterfront Sanctuary</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-serif-luxury">
+              Refined Elegance,{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100">
+                Unrivaled Hospitality.
+              </span>
+            </h1>
+
+            <p className="text-slate-300 text-xs sm:text-sm font-light leading-snug">
+              Master-crafted suites with panoramic vistas and 24/7 private concierge. Transparent rates in USD with zero hidden fees.
+            </p>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight font-serif-luxury">
-            Refined Elegance, <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100">
-              Unrivaled Hospitality.
-            </span>
-          </h1>
-
-          <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl font-light">
-            Immerse yourself in master-crafted suites, panoramic skyline vistas, and 24/7 dedicated private concierge service. Transparent rates guaranteed in USD with zero hidden resort fees.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-6 pt-3 text-xs text-slate-300">
+          <div className="flex flex-wrap lg:flex-col items-start gap-2 text-[11px] text-slate-300 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-800/80 pt-3 lg:pt-0 lg:pl-6">
             <div className="flex items-center space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span>Best Rate Guarantee (USD)</span>
             </div>
             <div className="flex items-center space-x-2">
-              <Coffee className="w-4 h-4 text-amber-400" />
+              <Coffee className="w-3.5 h-3.5 text-amber-400" />
               <span>Complimentary Gourmet Breakfast</span>
             </div>
             <div className="flex items-center space-x-2">
-              <Wifi className="w-4 h-4 text-amber-300" />
+              <Wifi className="w-3.5 h-3.5 text-amber-300" />
               <span>Ultra-Fast Wi-Fi 7</span>
             </div>
           </div>
         </div>
 
-        {/* Ambient background glows */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 right-1/4 -mb-20 w-80 h-80 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+        {/* Ambient background glow */}
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
       </div>
 
       {/* Floating Filter & Search Bar */}

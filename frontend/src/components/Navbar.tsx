@@ -32,10 +32,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header className="sticky top-3 z-40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full transition-all">
-      <div className="bg-slate-900/85 backdrop-blur-xl border border-slate-800/90 rounded-2xl shadow-2xl px-4 py-3 flex items-center justify-between">
+      <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-xl px-4 py-2.5 flex items-center justify-between">
         {/* Brand & Monogram */}
-        <div className="flex items-center space-x-3.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 text-lg tracking-wider shrink-0 select-none">
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 text-base tracking-wider shrink-0 select-none">
             HP
           </div>
           <div>
@@ -45,9 +45,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 v2.0
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
-              Kong 3.9.4 &bull; Kafka 8.3 &bull; Keycloak 26.8 &bull; Postgres 18
-            </p>
           </div>
         </div>
 
