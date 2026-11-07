@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Native PowerShell script to bootstrap Keycloak realm, clients, roles and test users.
 .DESCRIPTION
@@ -62,30 +62,64 @@ Write-Host "=======================================================`n"
 
 # 1. Wait for Keycloak readiness
 Write-Host "[1/5] Checking Keycloak accessibility on $KeycloakUrl..." -ForegroundColor Yellow
-$deadline = (Get-Date).AddSeconds(150)
-$ready = $false
-$elapsed = 0
-while ((Get-Date) -lt $deadline) {
+
+function Test-KeycloakHttp {
+    param([string]$Url)
     try {
-        $check = Invoke-WebRequest -Uri "$KeycloakUrl/realms/master" -Method GET -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
-        if ($check -and ($check.StatusCode -in 200, 302, 401)) {
+        $check = Invoke-WebRequest -Uri "$Url/realms/master" -Method GET -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+        return ($check -and ($check.StatusCode -in 200, 302, 401))
+    } catch {
+        return $false
+    }
+}
+
+$ready = Test-KeycloakHttp -Url $KeycloakUrl
+$kcPfProc = $null
+
+if (-not $ready) {
+    if ($KeycloakUrl -match "localhost:8181|127\.0\.0\.1:8181") {
+        # Check if the Keycloak pod is ready in Kubernetes
+        Write-Host "  ▶ Checking Keycloak pod in 'auth' namespace..." -ForegroundColor DarkGray
+        & kubectl wait --namespace auth --for=condition=ready pod -l app.kubernetes.io/name=keycloak --timeout=120s 2>$null | Out-Null
+        
+        # Terminate any stale/hanging kubectl port-forward processes targeting 8181
+        Get-Process kubectl -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+                $cmdLine -and $cmdLine -match "8181"
+            } catch { $false }
+        } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+        Start-Sleep -Milliseconds 500
+
+        # Launch exactly ONE dedicated port-forward process
+        Write-Host "  ▶ Launching dedicated port-forward (8181:8080)..." -ForegroundColor DarkGray
+        $kcPfProc = Start-Process -FilePath "kubectl" -ArgumentList "port-forward -n auth svc/keycloak 8181:8080" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+    }
+
+    $deadline = (Get-Date).AddSeconds(90)
+    $elapsed = 0
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+        $elapsed += 2
+        if (Test-KeycloakHttp -Url $KeycloakUrl) {
             $ready = $true
             break
         }
-    } catch {
-        # Waiting for port-forward or Keycloak internal startup
+        # If the port-forward process died, relaunch once
+        if ($kcPfProc -and $kcPfProc.HasExited) {
+            Write-Host "  ▶ Port-forward process exited, retrying..." -ForegroundColor DarkGray
+            $kcPfProc = Start-Process -FilePath "kubectl" -ArgumentList "port-forward -n auth svc/keycloak 8181:8080" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+        }
+        Write-Host "  ... waiting for Keycloak to respond ($elapsed s elapsed)" -ForegroundColor DarkGray
     }
-    if ($elapsed -ge 6 -and $KeycloakUrl -match "localhost:8181") {
-        # Auto-launch dedicated port-forward to Keycloak if no process is already forwarding 8181
-        Start-Process -FilePath "kubectl" -ArgumentList "port-forward -n auth svc/keycloak 8181:8080" -WindowStyle Hidden -ErrorAction SilentlyContinue
-    }
-    Write-Host "  ... waiting for Keycloak to respond ($elapsed s elapsed)" -ForegroundColor DarkGray
-    Start-Sleep -Seconds 3
-    $elapsed += 3
 }
 
 if (-not $ready) {
-    Write-Host "[X] Keycloak is not reachable on $KeycloakUrl after 150s. Ensure Keycloak is running." -ForegroundColor Red
+    Write-Host "[X] Keycloak is not reachable on $KeycloakUrl after timeout. Ensure Keycloak is running." -ForegroundColor Red
+    if ($kcPfProc -and -not $kcPfProc.HasExited) {
+        Stop-Process -Id $kcPfProc.Id -Force -ErrorAction SilentlyContinue
+    }
     exit 1
 }
 Write-Host "[OK] Keycloak is ready." -ForegroundColor Green
