@@ -78,9 +78,9 @@ param(
     [string]$DdosUrl = "",
     [string]$LockId = "",
 
-    # Minikube Capacity Overrides
-    [int]$Cpus = 8,
-    [int]$MemoryMb = 16384,
+    # Minikube Capacity Overrides (Right-Sized: 4 vCPUs / 8 GB RAM)
+    [int]$Cpus = 4,
+    [int]$MemoryMb = 8192,
     [string]$DiskSize = "40g"
 )
 
@@ -1980,7 +1980,7 @@ switch ($Command) {
         Write-Host "================================================================================" -ForegroundColor DarkGray
         Write-Host "  .\platform-minikube.ps1 up [Options]       Full 9-stage bootstrap: 6 DevSecOps gates, build/load, Vault PKI & Helm 4.3.1"
         Write-Host "      Options: [-Build] [-Fast] [-Install] [-InstallOpenCostPlugin] [-WithHelm] [-WithoutHelm]"
-        Write-Host "               [-WithIstio] [-WithoutIstio] [-SkipScans] [-NoTunnel] [-Cpus 8] [-MemoryMb 16384] [-DiskSize 40g]"
+        Write-Host "               [-WithIstio] [-WithoutIstio] [-SkipScans] [-NoTunnel] [-Cpus 4] [-MemoryMb 8192] [-DiskSize 40g]"
         Write-Host "      Example: .\platform-minikube.ps1 up -Build"
         Write-Host "  .\platform-minikube.ps1 start / resume     Fast-resume a stopped cluster in <30s with Cosign provenance & self-healing tunnels"
         Write-Host "      Options: [-Fast] [-SkipScans] [-NoTunnel]"

@@ -54,7 +54,7 @@ WORKLOAD_SPECS = [
 DEFAULT_PROFILES = {
     "minikube": {
         "title": "Local Minikube Cluster (Intel/AMD Dev Machine)",
-        "hardware": "8 vCPUs | 16 GiB RAM | 40 GB NVMe Disk",
+        "hardware": "4 vCPUs | 8 GiB RAM | 40 GB NVMe Disk",
         "cloud_equivalent_cost": 348.50,
         "actual_cost": 0.00,
         "monthly_savings": 348.50,
@@ -73,7 +73,7 @@ DEFAULT_PROFILES = {
     },
     "dev": {
         "title": "Local Minikube Dev Environment (On-Premises Cloud Simulation)",
-        "hardware": "8 vCPUs | 16 GiB RAM | 40 GB NVMe Disk",
+        "hardware": "4 vCPUs | 8 GiB RAM | 40 GB NVMe Disk",
         "cloud_equivalent_cost": 348.50,
         "actual_cost": 0.00,
         "monthly_savings": 348.50,
