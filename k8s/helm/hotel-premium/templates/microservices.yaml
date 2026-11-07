@@ -65,6 +65,7 @@ metadata:
     app: {{ $svc.name }}
     app.kubernetes.io/name: {{ $svc.name }}
     app.kubernetes.io/part-of: hotel-premium
+automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -94,6 +95,7 @@ spec:
         sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: {{ $svc.name }}-sa
+      automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true

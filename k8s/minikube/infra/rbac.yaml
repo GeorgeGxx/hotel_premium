@@ -4,12 +4,21 @@ kind: ServiceAccount
 metadata:
   name: hotel-app-sa
   namespace: dev
+automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: hotel-worker-sa
   namespace: dev
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hotel-data-sa
+  namespace: data
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

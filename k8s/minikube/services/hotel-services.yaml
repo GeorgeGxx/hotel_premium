@@ -242,6 +242,8 @@ spec:
         app: postgres
         app.kubernetes.io/name: postgres
     spec:
+      serviceAccountName: hotel-data-sa
+      automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
@@ -351,6 +353,8 @@ spec:
         app: redis
         app.kubernetes.io/name: redis
     spec:
+      serviceAccountName: hotel-data-sa
+      automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
@@ -446,6 +450,8 @@ spec:
         app: kafka
         app.kubernetes.io/name: kafka
     spec:
+      serviceAccountName: hotel-data-sa
+      automountServiceAccountToken: false
       enableServiceLinks: false
       containers:
         - name: kafka
@@ -566,8 +572,9 @@ spec:
         version: v1
         sidecar.istio.io/inject: "true"
     spec:
-      enableServiceLinks: false
       serviceAccountName: hotel-app-sa
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -682,8 +689,9 @@ spec:
         version: v1
         sidecar.istio.io/inject: "true"
     spec:
-      enableServiceLinks: false
       serviceAccountName: hotel-app-sa
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -802,8 +810,9 @@ spec:
         version: v1
         sidecar.istio.io/inject: "true"
     spec:
-      enableServiceLinks: false
       serviceAccountName: hotel-app-sa
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -917,8 +926,9 @@ spec:
         app: notification-worker
         version: v1
     spec:
-      enableServiceLinks: false
       serviceAccountName: hotel-worker-sa
+      automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -1088,6 +1098,8 @@ spec:
         version: v1
         sidecar.istio.io/inject: "true"
     spec:
+      serviceAccountName: hotel-app-sa
+      automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
