@@ -131,7 +131,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "basic123",
+          "value": "password",
           "temporary": false
         }
       ],

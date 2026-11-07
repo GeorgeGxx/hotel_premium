@@ -17,7 +17,7 @@ param(
         "up", "bootstrap", "start", "resume", "down", "stop", "destroy", "build",
         "test", "doctor", "verify", "smoke-test", "smoke", "status", "history",
         "rollout", "rollback", "canary", "tools", "policy", "security-scan",
-        "vault", "urls", "tunnel", "tunnels", "forward", "cloudflare",
+        "vault", "keycloak", "urls", "tunnel", "tunnels", "forward", "cloudflare",
         "helm", "cost", "finops", "finops-rightsize", "secrets", "bcdr", "dr",
         "contract", "performance", "dast", "simulate", "e2e", "journey",
         "ddos", "chaos", "chaos-drills", "diagnose", "dashboards",
@@ -935,6 +935,32 @@ function Initialize-LocalVault {
     }
 }
 
+function Initialize-LocalKeycloak {
+    Show-StageHeader "KEYCLOAK" "Bootstrapping Keycloak IAM Realm ('hotel-realm'), Clients & Test Users"
+    $bootstrapScript = Join-Path $PSScriptRoot "scripts\bootstrap-keycloak.ps1"
+    if (-not (Test-Path $bootstrapScript)) {
+        Show-Warning "Keycloak bootstrap script not found at '$bootstrapScript'."
+        return
+    }
+
+    Write-Host "  ▶ Awaiting Keycloak pod readiness in 'auth' namespace..." -ForegroundColor White
+    & kubectl wait --namespace auth --for=condition=ready pod -l app.kubernetes.io/name=keycloak --timeout=120s 2>$null | Out-Null
+
+    $kcPod = kubectl get pod -n auth -l app.kubernetes.io/name=keycloak -o jsonpath='{.items[0].metadata.name}' 2>$null
+    if (-not $kcPod) {
+        Show-Warning "Keycloak pod not found in namespace 'auth'. Skipping Keycloak bootstrap."
+        return
+    }
+
+    Write-Host "  ▶ Initializing Keycloak realm, clients and users..." -ForegroundColor White
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -KeycloakUrl "http://localhost:8181" -AdminUser "admin" -AdminPassword "admin"
+        Show-Success "Keycloak 'hotel-realm' and users ('admin_user', 'basic_user') configured for frontend integration."
+    } catch {
+        Show-Warning "Keycloak bootstrap encountered an error: $_"
+    }
+}
+
 function Invoke-VaultKubernetesAuthSetup {
     param([string]$Namespace = "vault", [switch]$PruneLegacyRole)
     Show-Banner "Configuring Vault v2.2.0 Kubernetes Authentication & Scoped Policies"
@@ -1368,8 +1394,9 @@ function Invoke-MinikubeFastResume {
     }
     Show-Success "Database, messaging, and Hotel Premium microservice pods are Ready."
 
-    Show-StageHeader "5/6" "Reconciling Vault v2.2.0 Secrets & Istio mTLS"
+    Show-StageHeader "5/6" "Reconciling Vault v2.2.0 Secrets, Keycloak IAM & Istio mTLS"
     Initialize-LocalVault
+    Initialize-LocalKeycloak
 
     Show-StageHeader "6/6" "Connecting Self-Healing Localhost Port-Forward Tunnels"
     if (-not $NoTunnel) {
@@ -1499,6 +1526,7 @@ function Invoke-MinikubeBootstrap {
     if (Test-Path "$infraDir\opencost.yaml") {
         kubectl apply -f "$infraDir\opencost.yaml" 2>$null | Out-Null
     }
+    Initialize-LocalKeycloak
     Show-Success "Core infrastructure, IAM, LGTM Observability, RBAC and Vault v2.2.0 configured."
 
     # [7/9] HPA & KEDA Event-Driven Autoscaling
@@ -1806,6 +1834,10 @@ switch ($Command) {
             "istio-pki" { Invoke-VaultIstioPkiSetup -MeshNamespace $IstioNamespace -Rotate:$RotateVaultPki }
             "seed"      { Initialize-LocalVault }
         }
+    }
+
+    "keycloak" {
+        Initialize-LocalKeycloak
     }
 
     { $_ -in @("cost", "finops") } {
