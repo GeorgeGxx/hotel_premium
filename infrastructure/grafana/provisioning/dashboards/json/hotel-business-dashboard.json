@@ -268,7 +268,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max by (status) (hotel_rooms_status_total)",
+          "expr": "max by (status) (hotel_rooms_status_total{instance=~\".*room-service.*\"}) or max by (status) (hotel_rooms_status_total)",
           "legendFormat": "{{status}}",
           "refId": "A"
         }

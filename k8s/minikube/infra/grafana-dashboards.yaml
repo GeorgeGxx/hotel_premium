@@ -66,7 +66,7 @@ data:
           },
           "targets": [
             {
-              "expr": "(sum(hotel_rooms_status_total{job=\"hotel-microservices\", status=\"OCCUPIED\"}) / clamp_min(sum(hotel_rooms_status_total{job=\"hotel-microservices\"}), 1) * 100) or max(hotel_occupancy_rate_percent)",
+              "expr": "(sum(hotel_rooms_status_total{instance=~\".*room-service.*\", status=\"OCCUPIED\"}) / clamp_min(sum(hotel_rooms_status_total{instance=~\".*room-service.*\"}), 1) * 100) or max(hotel_occupancy_rate_percent)",
               "refId": "A"
             }
           ],
@@ -429,7 +429,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max by (status) (hotel_rooms_status_total)",
+              "expr": "max by (status) (hotel_rooms_status_total{instance=~\".*room-service.*\"}) or max by (status) (hotel_rooms_status_total)",
               "legendFormat": "{{status}}",
               "refId": "A"
             }
