@@ -889,7 +889,7 @@ data:
           "title": "Service Availability (SLA)",
           "type": "stat",
           "gridPos": {
-            "h": 4,
+            "h": 5,
             "w": 4,
             "x": 0,
             "y": 1
@@ -910,7 +910,6 @@ data:
                 "mode": "thresholds"
               },
               "decimals": 2,
-              "displayName": "Targets Online",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -934,7 +933,7 @@ data:
           "options": {
             "colorMode": "value",
             "graphMode": "none",
-            "justifyMode": "auto",
+            "justifyMode": "center",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -943,7 +942,10 @@ data:
               "fields": "",
               "values": false
             },
-            "textMode": "value_and_name"
+            "text": {
+              "valueSize": 36
+            },
+            "textMode": "value"
           }
         },
         {
@@ -951,7 +953,7 @@ data:
           "title": "Kong Gateway Throughput",
           "type": "stat",
           "gridPos": {
-            "h": 4,
+            "h": 5,
             "w": 4,
             "x": 4,
             "y": 1
@@ -972,7 +974,6 @@ data:
                 "mode": "thresholds"
               },
               "decimals": 2,
-              "displayName": "HTTP Requests / sec",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -988,7 +989,7 @@ data:
           "options": {
             "colorMode": "value",
             "graphMode": "area",
-            "justifyMode": "auto",
+            "justifyMode": "center",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -997,7 +998,10 @@ data:
               "fields": "",
               "values": false
             },
-            "textMode": "value_and_name"
+            "text": {
+              "valueSize": 36
+            },
+            "textMode": "value"
           }
         },
         {
@@ -1005,7 +1009,7 @@ data:
           "title": "Gateway Error Rate (5xx)",
           "type": "stat",
           "gridPos": {
-            "h": 4,
+            "h": 5,
             "w": 4,
             "x": 8,
             "y": 1
@@ -1026,7 +1030,6 @@ data:
                 "mode": "thresholds"
               },
               "decimals": 2,
-              "displayName": "HTTP 5xx Errors",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -1050,7 +1053,7 @@ data:
           "options": {
             "colorMode": "value",
             "graphMode": "area",
-            "justifyMode": "auto",
+            "justifyMode": "center",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -1059,7 +1062,10 @@ data:
               "fields": "",
               "values": false
             },
-            "textMode": "value_and_name"
+            "text": {
+              "valueSize": 36
+            },
+            "textMode": "value"
           }
         },
         {
@@ -1068,7 +1074,7 @@ data:
           "description": "Real-time Server-Sent Events subscribers connected to Front-Desk & Guest portals.",
           "type": "stat",
           "gridPos": {
-            "h": 4,
+            "h": 5,
             "w": 4,
             "x": 12,
             "y": 1
@@ -1079,7 +1085,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(hotel_sse_active_clients) or vector(1)",
+              "expr": "sum(hotel_sse_active_clients) or vector(0)",
               "refId": "A"
             }
           ],
@@ -1088,7 +1094,6 @@ data:
               "color": {
                 "mode": "thresholds"
               },
-              "displayName": "Connected Clients",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -1108,7 +1113,7 @@ data:
           "options": {
             "colorMode": "value",
             "graphMode": "area",
-            "justifyMode": "auto",
+            "justifyMode": "center",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -1117,7 +1122,10 @@ data:
               "fields": "",
               "values": false
             },
-            "textMode": "value_and_name"
+            "text": {
+              "valueSize": 36
+            },
+            "textMode": "value"
           }
         },
         {
@@ -1183,7 +1191,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 5
+            "y": 6
           },
           "id": 7,
           "title": "Microservices RED Telemetry & Go 1.26 Runtime ($service)",
@@ -1197,7 +1205,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 6
+            "y": 7
           },
           "datasource": {
             "type": "prometheus",
@@ -1245,7 +1253,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 6
+            "y": 7
           },
           "datasource": {
             "type": "prometheus",
@@ -1293,7 +1301,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 6
+            "y": 7
           },
           "datasource": {
             "type": "prometheus",
@@ -1338,7 +1346,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 13
+            "y": 14
           },
           "id": 11,
           "title": "Event-Driven Architecture (Kafka 8.3.2 KRaft & DLQ Resilience)",
@@ -1353,7 +1361,7 @@ data:
             "h": 5,
             "w": 4,
             "x": 0,
-            "y": 14
+            "y": 15
           },
           "datasource": {
             "type": "prometheus",
@@ -1408,7 +1416,7 @@ data:
             "h": 5,
             "w": 4,
             "x": 4,
-            "y": 14
+            "y": 15
           },
           "datasource": {
             "type": "prometheus",
@@ -1462,7 +1470,7 @@ data:
             "h": 5,
             "w": 10,
             "x": 8,
-            "y": 14
+            "y": 15
           },
           "datasource": {
             "type": "prometheus",
@@ -1510,7 +1518,7 @@ data:
             "h": 5,
             "w": 6,
             "x": 18,
-            "y": 14
+            "y": 15
           },
           "datasource": {
             "type": "prometheus",
@@ -1571,7 +1579,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 19
+            "y": 20
           },
           "id": 16,
           "title": "Storage & Caching Tier (PostgreSQL 18 & Redis 8.8.1-Alpine)",
@@ -1586,7 +1594,7 @@ data:
             "h": 5,
             "w": 6,
             "x": 0,
-            "y": 20
+            "y": 21
           },
           "datasource": {
             "type": "prometheus",
@@ -1637,7 +1645,7 @@ data:
             "h": 5,
             "w": 6,
             "x": 6,
-            "y": 20
+            "y": 21
           },
           "datasource": {
             "type": "prometheus",
@@ -1700,7 +1708,7 @@ data:
             "h": 5,
             "w": 6,
             "x": 12,
-            "y": 20
+            "y": 21
           },
           "datasource": {
             "type": "prometheus",
@@ -1752,7 +1760,7 @@ data:
             "h": 5,
             "w": 6,
             "x": 18,
-            "y": 20
+            "y": 21
           },
           "datasource": {
             "type": "prometheus",
@@ -1812,7 +1820,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 25
+            "y": 26
           },
           "id": 21,
           "title": "Kubernetes Resources ($namespace), Grafana Alloy 1.21 (OTLP) & Live Loki Logs",
@@ -1826,7 +1834,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 26
+            "y": 27
           },
           "datasource": {
             "type": "prometheus",
@@ -1874,7 +1882,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 26
+            "y": 27
           },
           "datasource": {
             "type": "prometheus",
@@ -1921,7 +1929,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 26
+            "y": 27
           },
           "datasource": {
             "type": "prometheus",
@@ -1963,7 +1971,7 @@ data:
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 33
+            "y": 34
           },
           "datasource": {
             "type": "loki",
