@@ -142,4 +142,40 @@ describe('RoomMatrix Component (Frontend TDD)', () => {
     expect(handleCleaned).toHaveBeenCalledTimes(1);
     expect(handleCleaned).toHaveBeenCalledWith(mockRooms[2]);
   });
+
+  it('opens operational status modal and triggers onUpdateStatus to MAINTENANCE', () => {
+    const handleUpdateStatus = vi.fn();
+    render(
+      <RoomMatrix
+        rooms={mockRooms}
+        onCheckInClick={vi.fn()}
+        onCheckOutClick={vi.fn()}
+        onMarkCleanedClick={vi.fn()}
+        onUpdateStatus={handleUpdateStatus}
+      />
+    );
+
+    // Click on the status override button for room 101
+    const optionsBtn = screen.getByRole('button', { name: /Change Status for Room 101/i });
+    fireEvent.click(optionsBtn);
+
+    // Modal opens
+    expect(screen.getByText('Change Suite Status')).toBeInTheDocument();
+    expect(screen.getByText(/Suite 101/i)).toBeInTheDocument();
+
+    // Select Maintenance
+    const maintOption = screen.getByText('Maintenance (Out of Order - OOO)');
+    fireEvent.click(maintOption);
+
+    // Confirm status transition
+    const confirmBtn = screen.getByRole('button', { name: /Confirm Status Change/i });
+    fireEvent.click(confirmBtn);
+
+    expect(handleUpdateStatus).toHaveBeenCalledTimes(1);
+    expect(handleUpdateStatus).toHaveBeenCalledWith(
+      mockRooms[0],
+      'MAINTENANCE',
+      expect.any(String)
+    );
+  });
 });

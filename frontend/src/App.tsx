@@ -216,6 +216,30 @@ export const App: React.FC = () => {
     showToast(`Room ${room.number} cleaned and ready for guests.`);
   };
 
+  // Arbitrary Operational Room Status Override (Maintenance, Cleaning, Blocked, etc.)
+  const handleUpdateRoomStatus = async (
+    room: Room,
+    newStatus: RoomStatus,
+    reason?: string
+  ) => {
+    await updateRoomStatus(room.id, newStatus);
+    setRooms((prev) =>
+      prev.map((r) =>
+        r.id === room.id
+          ? {
+              ...r,
+              status: newStatus,
+              notes: reason ? reason : r.notes,
+              updated_at: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+    showToast(
+      `Room ${room.number} transitioned to ${newStatus}${reason ? `: ${reason}` : ''}`
+    );
+  };
+
   // Reservations Manager Handlers
   const handleCreateStayFromManager = async (dto: CreateStayDTO) => {
     const created = await createStay(dto);
@@ -413,6 +437,7 @@ export const App: React.FC = () => {
               onCheckInClick={(room) => setSelectedRoomForCheckIn(room)}
               onCheckOutClick={handleCheckOut}
               onMarkCleanedClick={handleMarkCleaned}
+              onUpdateStatus={handleUpdateRoomStatus}
             />
           </div>
         )}
