@@ -246,7 +246,14 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative antialiased selection:bg-amber-500/30 selection:text-amber-200">
+      {/* Ambient Glow Effects */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/3 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
+      </div>
+
       <Navbar
         onRefresh={loadData}
         isLoading={isLoading}
@@ -259,14 +266,14 @@ export const App: React.FC = () => {
 
       {/* Toast Alert Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-2 text-sm border border-slate-700 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center space-x-2 text-xs border border-amber-500/30 animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeView === 'GUEST_PORTAL' ? (
           /* ================= GUEST LUXURY BOOKING VIEW ================= */
           <GuestShowcase
@@ -291,20 +298,20 @@ export const App: React.FC = () => {
           /* ================= STAFF FRONT DESK (ROOM MATRIX) VIEW ================= */
           <div className="space-y-6">
             {/* Role Banner Indicator */}
-            <div className="p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white shadow-xs">
+            <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/80 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xl">
               <div className="flex items-center space-x-3">
                 <div
-                  className={`p-2.5 rounded-lg text-white font-bold text-xs ${
-                    currentUser.role === 'ADMIN' ? 'bg-purple-600' : 'bg-blue-600'
+                  className={`p-2.5 rounded-xl text-slate-950 font-black text-xs ${
+                    currentUser.role === 'ADMIN' ? 'bg-amber-400 shadow-md shadow-amber-400/20' : 'bg-emerald-400 shadow-md shadow-emerald-400/20'
                   }`}
                 >
                   {currentUser.role}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">
-                    Logged in as <span className="underline decoration-indigo-500">{currentUser.username}</span> ({currentUser.email})
+                  <p className="text-sm font-bold text-white">
+                    Logged in as <span className="underline decoration-amber-500 text-amber-300">{currentUser.username}</span> ({currentUser.email})
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-400">
                     {currentUser.role === 'ADMIN'
                       ? 'Full administrative control: Rates, Cash register audit, User roles & Analytics'
                       : 'Front desk reception: View rooms, create new reservations, edit stays, and cancel bookings'}
@@ -316,7 +323,7 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleToggleRole}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 font-semibold hover:bg-slate-50 text-slate-700 transition-colors"
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 font-semibold hover:bg-slate-700 text-slate-200 transition-colors"
                 >
                   Switch to {currentUser.role === 'ADMIN' ? 'basic_user' : 'admin_user'}
                 </button>
@@ -326,10 +333,10 @@ export const App: React.FC = () => {
             {/* Module Sub-Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h1 className="text-2xl font-black tracking-tight text-slate-900">
-                  Front Desk & Room Rack Operations
+                <h1 className="text-2xl font-black tracking-tight text-white font-serif-luxury">
+                  Front Desk &amp; Room Rack Operations
                 </h1>
-                <p className="text-sm text-slate-500">
+                <p className="text-xs text-slate-400 mt-1">
                   Real-time physical status &bull; Clean Architecture &bull; Kong Gateway &bull; Keycloak 26.8 &bull; Redis 8
                 </p>
               </div>
@@ -339,10 +346,10 @@ export const App: React.FC = () => {
                   href="http://localhost:3000/d/hotel-business-kpis"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-xs"
+                  className="inline-flex items-center px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all shadow-xs"
                 >
                   <span>Business KPIs ($ USD)</span>
-                  <ExternalLink className="w-3.5 h-3.5 ml-1 text-emerald-600" />
+                  <ExternalLink className="w-3.5 h-3.5 ml-1.5 text-emerald-400" />
                 </a>
 
                 <button
@@ -354,10 +361,10 @@ export const App: React.FC = () => {
                     }
                     setIsAdminPanelOpen(true);
                   }}
-                  className={`inline-flex items-center px-3.5 py-2 text-xs font-semibold rounded-lg text-white shadow-xs transition-colors ${
+                  className={`inline-flex items-center px-3.5 py-2 text-xs font-bold rounded-xl shadow-md transition-all ${
                     currentUser.role === 'ADMIN'
-                      ? 'bg-indigo-600 hover:bg-indigo-700'
-                      : 'bg-slate-400 cursor-not-allowed'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:brightness-110 shadow-amber-500/20'
+                      : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                   }`}
                 >
                   <DollarSign className="w-4 h-4 mr-1.5" />
@@ -420,13 +427,13 @@ export const App: React.FC = () => {
       )}
 
       {/* Enterprise Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-12">
+      <footer className="bg-slate-900/60 border-t border-slate-800/80 py-6 text-center text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Hotel Premium v2.0 &bull; Enterprise Hospitality Platform</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-slate-300">Hotel Premium v2.0 &bull; Enterprise Hospitality Platform</span>
           </div>
-          <div className="flex items-center space-x-4 text-[11px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-center space-x-3 text-[11px] text-slate-400">
             <span>Kong Gateway 3.9.4 (DB-less)</span>
             <span>&bull;</span>
             <span>Kafka 8.3.2 (KRaft)</span>

@@ -16,58 +16,63 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ rooms }) => {
   const occupancyRate = total > 0 ? Math.round((occupied / total) * 100) : 0;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-6">
+      {/* Total Rooms */}
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-slate-800 shadow-lg flex items-center justify-between hover:border-slate-700 transition-all">
         <div>
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Rooms</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{total}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Across all floors</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Rooms</p>
+          <p className="text-2xl font-black text-white mt-1 tracking-tight">{total}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Across all floors</p>
         </div>
-        <div className="p-2.5 bg-slate-100 rounded-lg text-slate-600">
-          <BedDouble className="w-5 h-5" />
+        <div className="p-3 bg-slate-800/80 border border-slate-700/60 rounded-xl text-slate-300">
+          <BedDouble className="w-5 h-5 text-amber-400" />
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-xs flex items-center justify-between">
+      {/* Available */}
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-emerald-900/40 bg-gradient-to-br from-emerald-950/20 to-transparent shadow-lg flex items-center justify-between hover:border-emerald-600/40 transition-all">
         <div>
-          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Available</p>
-          <p className="text-2xl font-bold text-emerald-900 mt-1">{available}</p>
-          <p className="text-[11px] text-emerald-600 mt-0.5">Ready for guest</p>
+          <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Available</p>
+          <p className="text-2xl font-black text-emerald-300 mt-1 tracking-tight">{available}</p>
+          <p className="text-[11px] text-emerald-500 mt-0.5">Ready for guests</p>
         </div>
-        <div className="p-2.5 bg-emerald-100 rounded-lg text-emerald-700">
+        <div className="p-3 bg-emerald-950/60 border border-emerald-800/50 rounded-xl text-emerald-400">
           <CheckCircle2 className="w-5 h-5" />
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl border border-indigo-200 bg-indigo-50/20 shadow-xs flex items-center justify-between">
+      {/* Occupied */}
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-indigo-900/40 bg-gradient-to-br from-indigo-950/20 to-transparent shadow-lg flex items-center justify-between hover:border-indigo-600/40 transition-all">
         <div>
-          <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Occupied</p>
-          <p className="text-2xl font-bold text-indigo-900 mt-1">{occupied}</p>
-          <p className="text-[11px] text-indigo-600 mt-0.5">{occupancyRate}% occupancy</p>
+          <p className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Occupied</p>
+          <p className="text-2xl font-black text-indigo-300 mt-1 tracking-tight">{occupied}</p>
+          <p className="text-[11px] text-indigo-400 mt-0.5">{occupancyRate}% occupancy</p>
         </div>
-        <div className="p-2.5 bg-indigo-100 rounded-lg text-indigo-700">
+        <div className="p-3 bg-indigo-950/60 border border-indigo-800/50 rounded-xl text-indigo-400">
           <BedDouble className="w-5 h-5" />
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs flex items-center justify-between">
+      {/* Housekeeping */}
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-amber-900/40 bg-gradient-to-br from-amber-950/20 to-transparent shadow-lg flex items-center justify-between hover:border-amber-600/40 transition-all">
         <div>
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Housekeeping</p>
-          <p className="text-2xl font-bold text-amber-900 mt-1">{dirty}</p>
-          <p className="text-[11px] text-amber-600 mt-0.5">Cleaning required</p>
+          <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Housekeeping</p>
+          <p className="text-2xl font-black text-amber-300 mt-1 tracking-tight">{dirty}</p>
+          <p className="text-[11px] text-amber-500 mt-0.5">Cleaning required</p>
         </div>
-        <div className="p-2.5 bg-amber-100 rounded-lg text-amber-700">
+        <div className="p-3 bg-amber-950/60 border border-amber-800/50 rounded-xl text-amber-400">
           <Sparkles className="w-5 h-5" />
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20 shadow-xs flex items-center justify-between col-span-2 sm:col-span-1">
+      {/* Maintenance */}
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-rose-900/40 bg-gradient-to-br from-rose-950/20 to-transparent shadow-lg flex items-center justify-between col-span-2 sm:col-span-1 hover:border-rose-600/40 transition-all">
         <div>
-          <p className="text-xs font-semibold text-rose-700 uppercase tracking-wider">Maintenance</p>
-          <p className="text-2xl font-bold text-rose-900 mt-1">{maintenance}</p>
-          <p className="text-[11px] text-rose-600 mt-0.5">Out of service</p>
+          <p className="text-[11px] font-bold text-rose-400 uppercase tracking-wider">Maintenance</p>
+          <p className="text-2xl font-black text-rose-300 mt-1 tracking-tight">{maintenance}</p>
+          <p className="text-[11px] text-rose-500 mt-0.5">Out of service</p>
         </div>
-        <div className="p-2.5 bg-rose-100 rounded-lg text-rose-700">
+        <div className="p-3 bg-rose-950/60 border border-rose-800/50 rounded-xl text-rose-400">
           {maintenance > 0 ? <AlertTriangle className="w-5 h-5" /> : <Wrench className="w-5 h-5" />}
         </div>
       </div>

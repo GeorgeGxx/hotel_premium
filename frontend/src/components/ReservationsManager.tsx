@@ -198,29 +198,29 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
     switch (status) {
       case 'ACTIVE':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Active Guest
           </span>
         );
       case 'RESERVED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Calendar className="w-3.5 h-3.5" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
             Reserved
           </span>
         );
       case 'CHECKED_OUT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
             <CheckCircle className="w-3.5 h-3.5 text-slate-400" />
             Checked Out
           </span>
         );
       case 'CANCELLED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertCircle className="w-3.5 h-3.5" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30">
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
             Cancelled
           </span>
         );
@@ -232,46 +232,46 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner and Quick Stats */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-              Reservations & Folios Management
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="font-serif-luxury text-2xl font-bold tracking-tight text-white">
+              Reservations &amp; Folios Management
             </h2>
-            <span className="bg-amber-100 text-amber-900 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <Sparkles className="w-3 h-3" />
+            <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-400" />
               Live Synchronized
             </span>
-            <span className="bg-slate-100 text-slate-700 text-xs font-mono font-bold px-2 py-0.5 rounded border border-slate-200">
+            <span className="bg-slate-800 text-slate-300 text-xs font-mono font-bold px-2 py-0.5 rounded border border-slate-700">
               {currentUser.role}
             </span>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             Enterprise stay records, real-time GiST double-booking exclusion, and asynchronous event streaming.
           </p>
         </div>
 
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-medium px-5 py-2.5 rounded-xl shadow-sm transition-all"
+          className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 active:scale-95 text-slate-950 font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 transition-all text-xs"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 text-slate-950" />
           <span>New Reservation</span>
         </button>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-3 justify-between items-center">
+      <div className="bg-slate-900/80 backdrop-blur-xl rounded-2xl p-4 border border-slate-800 shadow-xl flex flex-col sm:flex-row gap-3 justify-between items-center">
         {/* Status Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           {['ALL', 'ACTIVE', 'RESERVED', 'CHECKED_OUT', 'CANCELLED'].map((st) => (
             <button
               key={st}
               onClick={() => setFilterStatus(st)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 filterStatus === st
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
               {st === 'ALL' ? 'All Stays' : st.replace('_', ' ')}
@@ -287,17 +287,17 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
             placeholder="Search guest, room, doc..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-950/80 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-all"
           />
         </div>
       </div>
 
       {/* Reservations Table / Cards */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden">
         {filteredStays.length === 0 ? (
           <div className="py-16 text-center">
-            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-slate-700">No reservations found</h3>
+            <Calendar className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-slate-300">No reservations found</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
               There are no reservations matching your current filter criteria.
             </p>
@@ -306,16 +306,16 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 uppercase font-semibold tracking-wider">
+                <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase font-semibold tracking-wider">
                   <th className="py-3.5 px-4">Guest Details</th>
                   <th className="py-3.5 px-4">Suite / Room</th>
                   <th className="py-3.5 px-4">Stay Dates</th>
-                  <th className="py-3.5 px-4">Rate & Deposit</th>
+                  <th className="py-3.5 px-4">Rate &amp; Deposit</th>
                   <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/60">
                 {filteredStays.map((stay) => {
                   const checkIn = new Date(stay.check_in_date).toLocaleDateString(undefined, {
                     month: 'short',
@@ -329,53 +329,53 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                   });
 
                   return (
-                    <tr key={stay.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900 text-sm">{stay.guest_name}</div>
-                        <div className="flex items-center gap-3 text-slate-500 text-[11px] mt-0.5">
+                    <tr key={stay.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-white text-sm">{stay.guest_name}</div>
+                        <div className="flex items-center gap-3 text-slate-400 text-[11px] mt-0.5">
                           {stay.guest_email && (
                             <span className="flex items-center gap-1">
-                              <Mail className="w-3 h-3 text-slate-400" />
+                              <Mail className="w-3 h-3 text-amber-400" />
                               {stay.guest_email}
                             </span>
                           )}
                           {stay.document_number && (
-                            <span className="flex items-center gap-1 font-mono text-slate-600">
-                              <FileText className="w-3 h-3 text-slate-400" />
+                            <span className="flex items-center gap-1 font-mono text-slate-400">
+                              <FileText className="w-3 h-3 text-slate-500" />
                               {stay.document_number}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-800">Room {stay.room_number}</div>
-                        <div className="text-[11px] text-indigo-600 font-medium">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-white">Room {stay.room_number}</div>
+                        <div className="text-[11px] text-amber-400 font-medium">
                           {stay.category_name} (Floor {stay.room_floor})
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 text-slate-800 font-medium">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{checkIn} → {checkOut}</span>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 text-slate-200 font-medium">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{checkIn} &rarr; {checkOut}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
+                        <div className="text-[11px] text-slate-400 mt-0.5">
                           {stay.total_nights} Night{stay.total_nights > 1 ? 's' : ''}
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-white">
                           ${stay.total_amount?.toFixed(2)} USD
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
                           <span>Deposit: ${stay.deposit_amount?.toFixed(2)}</span>
                           <span
                             className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
                               stay.payment_status === 'PAID'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                             }`}
                           >
                             {stay.payment_status}
@@ -383,16 +383,16 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">{getStatusBadge(stay.status)}</td>
+                      <td className="py-3.5 px-4">{getStatusBadge(stay.status)}</td>
 
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Edit available for basic_user and admin_user if not finished */}
                           {stay.status !== 'CHECKED_OUT' && stay.status !== 'CANCELLED' && (
                             <button
                               onClick={() => handleOpenEdit(stay)}
                               title="Edit Stay Details"
-                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
@@ -403,7 +403,7 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                             <button
                               onClick={() => handleCheckOutClick(stay)}
                               title="Check-Out Guest"
-                              className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors"
                             >
                               <LogOut className="w-4 h-4" />
                             </button>
@@ -414,7 +414,7 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                             <button
                               onClick={() => handleCancelClick(stay)}
                               title="Cancel Reservation"
-                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -432,39 +432,39 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
 
       {/* ================= CREATE RESERVATION MODAL ================= */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Calendar className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-800 animate-in fade-in zoom-in-95 text-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-lg">Create New VIP Reservation</h3>
-                  <p className="text-xs text-slate-500">
+                  <h3 className="font-serif-luxury font-bold text-white text-lg">Create New VIP Reservation</h3>
+                  <p className="text-xs text-slate-400">
                     Direct booking with conflict prevention in PostgreSQL 18
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="space-y-4 mt-4 text-xs">
+            <form onSubmit={handleCreateSubmit} className="space-y-4 mt-5 text-xs">
               {/* Room Selector */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Select Suite / Room</label>
+                <label className="block font-semibold text-slate-300 mb-1.5">Select Suite / Room</label>
                 <select
                   value={createRoomId}
                   onChange={(e) => setCreateRoomId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
+                    <option key={r.id} value={r.id} className="bg-slate-900">
                       Room {r.number} - {r.category_name} (${r.base_price} USD/night) - Status: {r.status}
                     </option>
                   ))}
@@ -474,58 +474,58 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
               {/* Guest Information */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Guest Full Name</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Guest Full Name</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Lady Vivienne Westwood"
                     value={createGuestName}
                     onChange={(e) => setCreateGuestName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Guest Email</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Guest Email</label>
                   <input
                     type="email"
                     required
                     placeholder="guest@domain.com"
                     value={createGuestEmail}
                     onChange={(e) => setCreateGuestEmail(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Phone Number</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Phone Number</label>
                   <input
                     type="tel"
                     placeholder="+1 (555) 019-2831"
                     value={createGuestPhone}
                     onChange={(e) => setCreateGuestPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Document (Type & Number)</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Document (Type &amp; Number)</label>
                   <div className="flex gap-2">
                     <select
                       value={createDocType}
                       onChange={(e) => setCreateDocType(e.target.value)}
-                      className="w-1/3 px-2 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className="w-1/3 px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                     >
-                      <option value="PASSPORT">Passport</option>
-                      <option value="NATIONAL_ID">National ID</option>
-                      <option value="DRIVERS_LICENSE">Driver's Lic.</option>
+                      <option value="PASSPORT" className="bg-slate-900">Passport</option>
+                      <option value="NATIONAL_ID" className="bg-slate-900">National ID</option>
+                      <option value="DRIVERS_LICENSE" className="bg-slate-900">Driver's Lic.</option>
                     </select>
                     <input
                       type="text"
                       placeholder="Doc number"
                       value={createDocNumber}
                       onChange={(e) => setCreateDocNumber(e.target.value)}
-                      className="w-2/3 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className="w-2/3 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>
@@ -534,17 +534,17 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
               {/* Dates & Nights */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Check-in Date</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Check-in Date</label>
                   <input
                     type="date"
                     required
                     value={createCheckIn}
                     onChange={(e) => setCreateCheckIn(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Total Nights</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Total Nights</label>
                   <input
                     type="number"
                     min="1"
@@ -552,18 +552,18 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                     required
                     value={createNights}
                     onChange={(e) => setCreateNights(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Deposit (USD)</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Deposit (USD)</label>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={createDeposit}
                     onChange={(e) => setCreateDeposit(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -571,56 +571,56 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
               {/* Status Option */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Initial Status</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Initial Status</label>
                   <select
                     value={createStatus}
                     onChange={(e) => setCreateStatus(e.target.value as StayStatus)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="RESERVED">RESERVED (Upcoming)</option>
-                    <option value="ACTIVE">ACTIVE (Immediate Check-in)</option>
+                    <option value="RESERVED" className="bg-slate-900">RESERVED (Upcoming)</option>
+                    <option value="ACTIVE" className="bg-slate-900">ACTIVE (Immediate Check-in)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Special Requests</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Special Requests</label>
                   <input
                     type="text"
                     placeholder="Late arrival, high floor, etc."
                     value={createNotes}
                     onChange={(e) => setCreateNotes(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {/* Total Calculation */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex justify-between items-center">
+              <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 flex justify-between items-center">
                 <div>
-                  <span className="text-slate-500 text-[11px]">Calculated Total Amount</span>
-                  <div className="font-bold text-slate-900 text-sm">
+                  <span className="text-slate-400 text-[11px]">Calculated Total Amount</span>
+                  <div className="font-bold text-white text-base">
                     ${createTotalAmount.toFixed(2)} USD
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-slate-500 text-[11px]">Remaining Balance</span>
-                  <div className="font-bold text-indigo-600 text-sm">
+                  <span className="text-slate-400 text-[11px]">Remaining Balance</span>
+                  <div className="font-bold text-amber-400 text-base">
                     ${Math.max(0, createTotalAmount - createDeposit).toFixed(2)} USD
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm"
+                  className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all"
                 >
                   {isSubmitting ? 'Creating...' : 'Confirm Reservation'}
                 </button>
@@ -632,32 +632,32 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
 
       {/* ================= EDIT RESERVATION MODAL ================= */}
       {editingStay && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Edit2 className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-800 animate-in fade-in zoom-in-95 text-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                  <Edit2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">
+                  <h3 className="font-serif-luxury font-bold text-white text-base">
                     Edit Reservation: Room {editingStay.room_number}
                   </h3>
-                  <p className="text-xs text-slate-500">{editingStay.guest_name}</p>
+                  <p className="text-xs text-slate-400">{editingStay.guest_name}</p>
                 </div>
               </div>
               <button
                 onClick={() => setEditingStay(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="space-y-4 mt-4 text-xs">
+            <form onSubmit={handleEditSubmit} className="space-y-4 mt-5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Total Nights</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Total Nights</label>
                   <input
                     type="number"
                     min="1"
@@ -665,11 +665,11 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                     required
                     value={editNights}
                     onChange={(e) => setEditNights(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Nightly Rate (USD)</label>
+                  <label className="block font-semibold text-slate-300 mb-1.5">Nightly Rate (USD)</label>
                   <input
                     type="number"
                     min="1"
@@ -677,45 +677,45 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                     required
                     value={editRate}
                     onChange={(e) => setEditRate(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Deposit Paid (USD)</label>
+                <label className="block font-semibold text-slate-300 mb-1.5">Deposit Paid (USD)</label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   value={editDeposit}
                   onChange={(e) => setEditDeposit(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Notes & Requests</label>
+                <label className="block font-semibold text-slate-300 mb-1.5">Notes &amp; Requests</label>
                 <textarea
                   rows={3}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingStay(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg"
+                  className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all"
                 >
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
