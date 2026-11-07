@@ -34,9 +34,11 @@ services:
       limits:
         cpu: 500m
         memory: 512Mi
+        ephemeral-storage: 512Mi
       requests:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 128Mi
     env:
       APP_ENV: development
       PORT: "8081"
@@ -62,9 +64,11 @@ services:
       limits:
         cpu: 500m
         memory: 512Mi
+        ephemeral-storage: 512Mi
       requests:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 128Mi
     env:
       APP_ENV: development
       PORT: "8082"
@@ -92,9 +96,11 @@ services:
       limits:
         cpu: 500m
         memory: 512Mi
+        ephemeral-storage: 512Mi
       requests:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 128Mi
     env:
       APP_ENV: development
       PORT: "8083"
@@ -121,9 +127,11 @@ services:
       limits:
         cpu: 500m
         memory: 512Mi
+        ephemeral-storage: 512Mi
       requests:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 128Mi
     env:
       APP_ENV: development
       PORT: "8084"
@@ -146,9 +154,11 @@ services:
       limits:
         cpu: 300m
         memory: 256Mi
+        ephemeral-storage: 512Mi
       requests:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 128Mi
     env:
       VITE_API_BASE_URL: /api/v1
       VITE_KEYCLOAK_URL: http://localhost:8181

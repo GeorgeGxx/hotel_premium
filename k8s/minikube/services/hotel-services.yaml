@@ -276,9 +276,11 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 256Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 1Gi
           readinessProbe:
             exec:
               command:
@@ -309,7 +311,8 @@ spec:
           configMap:
             name: hotel-postgres-init
         - name: postgres-storage
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -386,9 +389,11 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 64Mi
             limits:
               cpu: 250m
               memory: 256Mi
+              ephemeral-storage: 256Mi
           readinessProbe:
             exec:
               command:
@@ -506,9 +511,11 @@ spec:
             requests:
               cpu: 200m
               memory: 512Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 1000m
               memory: 1Gi
+              ephemeral-storage: 2Gi
           readinessProbe:
             tcpSocket:
               port: 9092
@@ -625,9 +632,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           readinessProbe:
             httpGet:
               path: /api/v1/health
@@ -746,9 +755,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           readinessProbe:
             httpGet:
               path: /api/v1/health
@@ -863,9 +874,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           readinessProbe:
             httpGet:
               path: /api/v1/health
@@ -973,9 +986,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           readinessProbe:
             httpGet:
               path: /api/v1/health
@@ -1126,9 +1141,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           readinessProbe:
             httpGet:
               path: /
@@ -1158,9 +1175,11 @@ spec:
           configMap:
             name: hotel-frontend-config
         - name: nginx-cache
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 128Mi
         - name: nginx-run
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service
