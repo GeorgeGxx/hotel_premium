@@ -1,0 +1,154 @@
+# Global & Environment Defaults
+global:
+  environment: dev
+  namespace: dev
+  imageRegistry: docker.io
+  imagePrefix: georgegxx
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+# Hotel Premium Microservices Specification
+services:
+  roomService:
+    name: room-service
+    image: georgegxx/hotel-room-service:1.0.0
+    replicas: 2
+    port: 8081
+    targetPort: 8081
+    readinessPath: /api/v1/health
+    livenessPath: /api/v1/health
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    env:
+      APP_ENV: development
+      PORT: "8081"
+      ROOM_SERVICE_PORT: "8081"
+      DB_HOST: postgres.data.svc.cluster.local
+      DB_PORT: "5432"
+      DB_NAME: hotel_db
+      DB_USER: hotel_user
+      DB_PASSWORD: hotel_password
+      REDIS_ADDR: redis.data.svc.cluster.local:6379
+      OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.observability.svc.cluster.local:4317
+
+  stayService:
+    name: stay-service
+    image: georgegxx/hotel-stay-service:1.0.0
+    replicas: 2
+    port: 8082
+    targetPort: 8082
+    readinessPath: /api/v1/health
+    livenessPath: /api/v1/health
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    env:
+      APP_ENV: development
+      PORT: "8082"
+      STAY_SERVICE_PORT: "8082"
+      DB_HOST: postgres.data.svc.cluster.local
+      DB_PORT: "5432"
+      DB_NAME: hotel_db
+      DB_USER: hotel_user
+      DB_PASSWORD: hotel_password
+      REDIS_ADDR: redis.data.svc.cluster.local:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
+      KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
+      OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.observability.svc.cluster.local:4317
+
+  billingService:
+    name: billing-service
+    image: georgegxx/hotel-billing-service:1.0.0
+    replicas: 2
+    port: 8083
+    targetPort: 8083
+    readinessPath: /api/v1/health
+    livenessPath: /api/v1/health
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    env:
+      APP_ENV: development
+      PORT: "8083"
+      BILLING_SERVICE_PORT: "8083"
+      DB_HOST: postgres.data.svc.cluster.local
+      DB_PORT: "5432"
+      DB_NAME: hotel_db
+      DB_USER: hotel_user
+      DB_PASSWORD: hotel_password
+      REDIS_ADDR: redis.data.svc.cluster.local:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
+      OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.observability.svc.cluster.local:4317
+
+  notificationWorker:
+    name: notification-worker
+    image: georgegxx/hotel-notification-worker:1.0.0
+    replicas: 1
+    port: 8084
+    targetPort: 8084
+    readinessPath: /api/v1/health
+    livenessPath: /api/v1/health
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    env:
+      APP_ENV: development
+      PORT: "8084"
+      NOTIFICATION_WORKER_PORT: "8084"
+      KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
+      KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
+      REDIS_ADDR: redis.data.svc.cluster.local:6379
+      OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.observability.svc.cluster.local:4317
+
+  hotelFrontend:
+    name: hotel-frontend
+    image: georgegxx/hotel-frontend:1.0.0
+    replicas: 2
+    port: 80
+    targetPort: 80
+    readinessPath: /
+    livenessPath: /
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    env:
+      VITE_API_BASE_URL: /api/v1
+      VITE_KEYCLOAK_URL: http://localhost:8181

@@ -1,0 +1,69 @@
+# RBAC Configuration for Hotel Premium
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hotel-app-sa
+  namespace: dev
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hotel-worker-sa
+  namespace: dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hotel-service-role
+  namespace: dev
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hotel-service-binding
+  namespace: dev
+subjects:
+  - kind: ServiceAccount
+    name: hotel-app-sa
+    namespace: dev
+  - kind: ServiceAccount
+    name: hotel-worker-sa
+    namespace: dev
+roleRef:
+  kind: Role
+  name: hotel-service-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hotel-prometheus-metrics-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hotel-prometheus-binding
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: observability
+  - kind: ServiceAccount
+    name: prometheus-server
+    namespace: observability
+roleRef:
+  kind: ClusterRole
+  name: hotel-prometheus-metrics-reader
+  apiGroup: rbac.authorization.k8s.io

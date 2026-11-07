@@ -1,0 +1,265 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kong-sa
+  namespace: dev
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-declarative-config
+  namespace: dev
+data:
+  kong.yaml: |
+    _format_version: "3.0"
+    services:
+      - name: room-service
+        url: http://room-service.dev.svc.cluster.local:8081
+        routes:
+          - name: room-routes
+            paths:
+              - /api/v1/rooms
+              - /api/v1/health
+            strip_path: false
+            protocols:
+              - http
+              - https
+      - name: stay-service
+        url: http://stay-service.dev.svc.cluster.local:8082
+        routes:
+          - name: stay-routes
+            paths:
+              - /api/v1/stays
+              - /api/v1/events/live
+            strip_path: false
+            protocols:
+              - http
+              - https
+      - name: billing-service
+        url: http://billing-service.dev.svc.cluster.local:8083
+        routes:
+          - name: billing-routes
+            paths:
+              - /api/v1/billing
+            strip_path: false
+            protocols:
+              - http
+              - https
+      - name: notification-worker
+        url: http://notification-worker.dev.svc.cluster.local:8084
+        routes:
+          - name: notification-routes
+            paths:
+              - /api/v1/notifications
+            strip_path: false
+            protocols:
+              - http
+              - https
+      - name: frontend-service
+        url: http://hotel-frontend.dev.svc.cluster.local:80
+        routes:
+          - name: frontend-routes
+            paths:
+              - /
+            strip_path: false
+            protocols:
+              - http
+              - https
+    plugins:
+      - name: prometheus
+        config:
+          per_consumer: false
+          status_code_metrics: true
+          latency_metrics: true
+          bandwidth_metrics: true
+          upstream_health_metrics: true
+      - name: opentelemetry
+        config:
+          traces_endpoint: http://alloy.observability.svc.cluster.local:4318/v1/traces
+          resource_attributes:
+            service.name: kong-gateway
+            service.version: "3.9.4"
+          sampling_rate: 1.0
+          queue:
+            max_batch_size: 1
+            max_coalescing_delay: 0.1
+          propagation:
+            default_format: w3c
+            extract:
+              - w3c
+              - b3
+            inject:
+              - preserve
+              - w3c
+          http_response_header_for_traceid: X-Trace-Id
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - Idempotency-Key
+            - X-Idempotency-Key
+            - X-User-Role
+            - X-Correlation-ID
+            - traceparent
+            - tracestate
+          exposed_headers:
+            - Authorization
+            - X-Trace-Id
+            - X-Correlation-ID
+            - traceparent
+          credentials: false
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-ID
+          generator: uuid#counter
+          echo_downstream: true
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options: nosniff"
+              - "X-Frame-Options: DENY"
+              - "Referrer-Policy: strict-origin-when-cross-origin"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  namespace: dev
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/name: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kong-gateway
+  template:
+    metadata:
+      labels:
+        app: kong-gateway
+    spec:
+      serviceAccountName: kong-sa
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: kong
+          image: kong:3.9.4
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_PREFIX
+              value: /tmp/kong
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /etc/kong/kong.yaml
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_LISTEN
+              value: 0.0.0.0:8001
+            - name: KONG_ADMIN_GUI_LISTEN
+              value: 0.0.0.0:8002
+            - name: KONG_ADMIN_GUI_URL
+              value: http://localhost:8002
+            - name: KONG_PROXY_LISTEN
+              value: 0.0.0.0:8000
+            - name: KONG_TRACING_INSTRUMENTATIONS
+              value: "all"
+            - name: KONG_TRACING_SAMPLING_RATE
+              value: "1.0"
+            - name: KONG_NGINX_WORKER_PROCESSES
+              value: "1"
+          ports:
+            - name: proxy
+              containerPort: 8000
+            - name: admin
+              containerPort: 8001
+            - name: manager
+              containerPort: 8002
+          volumeMounts:
+            - name: kong-config
+              mountPath: /etc/kong
+              readOnly: true
+            - name: kong-tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: kong-config
+          configMap:
+            name: kong-declarative-config
+        - name: kong-tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-proxy
+  namespace: dev
+  labels:
+    app: kong-gateway
+spec:
+  type: LoadBalancer
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: 8000
+    - name: admin
+      port: 8001
+      targetPort: 8001
+    - name: manager
+      port: 8002
+      targetPort: 8002
+  selector:
+    app: kong-gateway

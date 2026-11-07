@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Hotel Premium Helm 4 Values Schema",
+  "type": "object",
+  "required": ["global", "services"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": ["environment", "namespace", "imagePullPolicy"],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "enum": ["dev", "staging", "prod", "production", "minikube"]
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "enum": ["IfNotPresent", "Always", "Never"]
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "required": [
+        "roomService",
+        "stayService",
+        "billingService",
+        "notificationWorker",
+        "hotelFrontend"
+      ]
+    }
+  }
+}

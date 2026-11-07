@@ -1,0 +1,13 @@
+global:
+  environment: dev
+  namespace: dev
+  imagePullPolicy: IfNotPresent
+
+autoscaling:
+  enabled: false
+
+pdb:
+  enabled: false
+
+networkPolicy:
+  enabled: true

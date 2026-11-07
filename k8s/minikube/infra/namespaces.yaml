@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    environment: dev
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auth
+  labels:
+    environment: auth
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+  labels:
+    environment: data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+  labels:
+    environment: vault
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    environment: observability
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opencost
+  labels:
+    environment: opencost
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    environment: gatekeeper-system
+    admission.gatekeeper.sh/ignore: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+  labels:
+    environment: keda

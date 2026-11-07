@@ -1,0 +1,846 @@
+# Hotel Premium Services Manifests for Minikube
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hotel-postgres-init
+  namespace: data
+data:
+  000001_init.sql: |
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "btree_gist";
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: data
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/version: "18-alpine"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: "hotel_user"
+            - name: POSTGRES_PASSWORD
+              value: "hotel_password"
+            - name: POSTGRES_DB
+              value: "hotel_db"
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: hotel-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: data
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-room
+  namespace: data
+  labels:
+    app: postgres-room
+    app.kubernetes.io/name: postgres-room
+    app.kubernetes.io/version: "18-alpine"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-room
+  template:
+    metadata:
+      labels:
+        app: postgres-room
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: "hotel_user"
+            - name: POSTGRES_PASSWORD
+              value: "hotel_password"
+            - name: POSTGRES_DB
+              value: "hotel_rooms_db"
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: hotel-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-room
+  namespace: data
+  labels:
+    app: postgres-room
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres-room
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-stay
+  namespace: data
+  labels:
+    app: postgres-stay
+    app.kubernetes.io/name: postgres-stay
+    app.kubernetes.io/version: "18-alpine"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-stay
+  template:
+    metadata:
+      labels:
+        app: postgres-stay
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: "hotel_user"
+            - name: POSTGRES_PASSWORD
+              value: "hotel_password"
+            - name: POSTGRES_DB
+              value: "hotel_stays_db"
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: hotel-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-stay
+  namespace: data
+  labels:
+    app: postgres-stay
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres-stay
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-billing
+  namespace: data
+  labels:
+    app: postgres-billing
+    app.kubernetes.io/name: postgres-billing
+    app.kubernetes.io/version: "18-alpine"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-billing
+  template:
+    metadata:
+      labels:
+        app: postgres-billing
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: "hotel_user"
+            - name: POSTGRES_PASSWORD
+              value: "hotel_password"
+            - name: POSTGRES_DB
+              value: "hotel_billing_db"
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: hotel-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-billing
+  namespace: data
+  labels:
+    app: postgres-billing
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres-billing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:8.8.1-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: data
+spec:
+  ports:
+    - port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:8.3.2
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - "unset KAFKA_PORT; exec /etc/confluent/docker/run"
+          env:
+            - name: CLUSTER_ID
+              value: "MkU3OEVBNTcwNTJENDM2Qk"
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@127.0.0.1:9093"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka.data.svc.cluster.local:9092"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_LOG_DIRS
+              value: "/tmp/kafka-logs"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_COMPRESSION_TYPE
+              value: "lz4"
+          ports:
+            - containerPort: 9092
+            - containerPort: 9093
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: data
+spec:
+  ports:
+    - name: client
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093
+  selector:
+    app: kafka
+---
+# Hotel Premium Microservices in dev namespace
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: room-service
+  namespace: dev
+  labels:
+    app: room-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: room-service
+  template:
+    metadata:
+      labels:
+        app: room-service
+        sidecar.istio.io/inject: "true"
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: hotel-app-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: room-service
+          image: georgegxx/hotel-room-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          env:
+            - name: PORT
+              value: "8081"
+            - name: ROOM_SERVICE_PORT
+              value: "8081"
+            - name: DB_HOST
+              value: "postgres.data.svc.cluster.local"
+            - name: DB_USER
+              value: "hotel_user"
+            - name: DB_PASSWORD
+              value: "hotel_password"
+            - name: DB_NAME
+              value: "hotel_db"
+            - name: REDIS_HOST
+              value: "redis.data.svc.cluster.local:6379"
+            - name: REDIS_ADDR
+              value: "redis.data.svc.cluster.local:6379"
+            - name: APP_ENV
+              value: "development"
+            - name: OTEL_COLLECTOR_URL
+              value: "alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "room-service"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: room-service
+  namespace: dev
+spec:
+  ports:
+    - port: 8081
+  selector:
+    app: room-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stay-service
+  namespace: dev
+  labels:
+    app: stay-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stay-service
+  template:
+    metadata:
+      labels:
+        app: stay-service
+        sidecar.istio.io/inject: "true"
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: hotel-app-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: stay-service
+          image: georgegxx/hotel-stay-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          env:
+            - name: PORT
+              value: "8082"
+            - name: STAY_SERVICE_PORT
+              value: "8082"
+            - name: DB_HOST
+              value: "postgres.data.svc.cluster.local"
+            - name: DB_USER
+              value: "hotel_user"
+            - name: DB_PASSWORD
+              value: "hotel_password"
+            - name: DB_NAME
+              value: "hotel_db"
+            - name: REDIS_HOST
+              value: "redis.data.svc.cluster.local:6379"
+            - name: REDIS_ADDR
+              value: "redis.data.svc.cluster.local:6379"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.data.svc.cluster.local:9092"
+            - name: KAFKA_STAY_TOPIC
+              value: "hotel.stays.lifecycle.v1"
+            - name: APP_ENV
+              value: "development"
+            - name: OTEL_COLLECTOR_URL
+              value: "alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "stay-service"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stay-service
+  namespace: dev
+spec:
+  ports:
+    - port: 8082
+  selector:
+    app: stay-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: dev
+  labels:
+    app: billing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-service
+  template:
+    metadata:
+      labels:
+        app: billing-service
+        sidecar.istio.io/inject: "true"
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: hotel-app-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: billing-service
+          image: georgegxx/hotel-billing-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: PORT
+              value: "8083"
+            - name: BILLING_SERVICE_PORT
+              value: "8083"
+            - name: DB_HOST
+              value: "postgres.data.svc.cluster.local"
+            - name: DB_USER
+              value: "hotel_user"
+            - name: DB_PASSWORD
+              value: "hotel_password"
+            - name: DB_NAME
+              value: "hotel_db"
+            - name: REDIS_HOST
+              value: "redis.data.svc.cluster.local:6379"
+            - name: REDIS_ADDR
+              value: "redis.data.svc.cluster.local:6379"
+            - name: APP_ENV
+              value: "development"
+            - name: OTEL_COLLECTOR_URL
+              value: "alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "billing-service"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8083
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8083
+            initialDelaySeconds: 15
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: dev
+spec:
+  ports:
+    - port: 8083
+  selector:
+    app: billing-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-worker
+  namespace: dev
+  labels:
+    app: notification-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-worker
+  template:
+    metadata:
+      labels:
+        app: notification-worker
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: hotel-worker-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: notification-worker
+          image: georgegxx/hotel-notification-worker:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8084
+          env:
+            - name: PORT
+              value: "8084"
+            - name: NOTIFICATION_WORKER_PORT
+              value: "8084"
+            - name: KAFKA_BROKERS
+              value: "kafka.data.svc.cluster.local:9092"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.data.svc.cluster.local:9092"
+            - name: REDIS_HOST
+              value: "redis.data.svc.cluster.local:6379"
+            - name: REDIS_ADDR
+              value: "redis.data.svc.cluster.local:6379"
+            - name: APP_ENV
+              value: "development"
+            - name: OTEL_COLLECTOR_URL
+              value: "alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "notification-worker"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8084
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-worker
+  namespace: dev
+spec:
+  ports:
+    - port: 8084
+  selector:
+    app: notification-worker
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hotel-frontend-config
+  namespace: dev
+data:
+  default.conf: |
+    server {
+        listen 80;
+        listen [::]:80;
+        listen 5173;
+        listen [::]:5173;
+        server_name localhost;
+
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied expired no-cache no-store private auth;
+        gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript application/json image/svg+xml;
+
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api/ {
+            resolver 10.96.0.10 kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off;
+            set $upstream_gw "http://istio-ingressgateway.istio-system.svc.cluster.local";
+            proxy_pass $upstream_gw;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 30d;
+            add_header Cache-Control "public, no-transform";
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-frontend
+  namespace: dev
+  labels:
+    app: hotel-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel-frontend
+  template:
+    metadata:
+      labels:
+        app: hotel-frontend
+        sidecar.istio.io/inject: "true"
+    spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: frontend
+          image: georgegxx/hotel-frontend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+            - name: dev
+              containerPort: 5173
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: hotel-frontend-config
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-frontend
+  namespace: dev
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: dev
+      port: 5173
+      targetPort: 5173
+  selector:
+    app: hotel-frontend
