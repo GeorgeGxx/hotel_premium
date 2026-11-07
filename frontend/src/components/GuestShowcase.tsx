@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Room } from '../types/hotel';
+import { getRoomImageUrl } from '../services/api';
 import {
   Sparkles,
   Star,
@@ -215,40 +216,47 @@ export const GuestShowcase: React.FC<GuestShowcaseProps> = ({
               key={room.id}
               className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col group"
             >
-              {/* Card Visual Header / Gradient Canvas */}
-              <div
-                className={`h-48 relative p-5 flex flex-col justify-between text-white ${
-                  room.category_name.includes('Presidential')
-                    ? 'bg-gradient-to-tr from-slate-900 via-indigo-950 to-purple-900'
-                    : room.category_name.includes('Deluxe')
-                    ? 'bg-gradient-to-tr from-slate-900 via-blue-950 to-sky-900'
-                    : 'bg-gradient-to-tr from-slate-800 via-slate-900 to-indigo-950'
-                }`}
-              >
-                {/* Top Badges */}
-                <div className="flex justify-between items-start">
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-white/15 backdrop-blur-md border border-white/20">
-                    Floor {room.floor} &bull; Room {room.number}
-                  </span>
+              {/* Card Visual Header / Photography with Ambient Gradient Overlay */}
+              <div className="h-52 relative overflow-hidden text-white bg-slate-900">
+                <img
+                  src={getRoomImageUrl(room)}
+                  alt={`${room.category_name} - Suite ${room.number}`}
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+                  }}
+                />
+                {/* Vignette & Contrast Overlay for WCAG readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-900/40 to-black/30 pointer-events-none" />
 
-                  <div className="flex items-center space-x-1 bg-amber-400/90 text-slate-950 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-xs">
-                    <Star className="w-3 h-3 fill-slate-950 text-slate-950" />
-                    <span>{room.rating?.toFixed(1) || '4.9'}</span>
-                    <span className="text-[10px] font-normal text-slate-800">
-                      ({room.review_count || 50})
+                <div className="absolute inset-0 p-4 flex flex-col justify-between pointer-events-none">
+                  {/* Top Badges */}
+                  <div className="flex justify-between items-start">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-slate-950/60 backdrop-blur-md border border-white/20 text-white">
+                      Floor {room.floor} &bull; Room {room.number}
                     </span>
-                  </div>
-                </div>
 
-                {/* Bottom View / Category */}
-                <div>
-                  <p className="text-[11px] text-indigo-300 font-semibold uppercase tracking-wider flex items-center">
-                    <Compass className="w-3 h-3 mr-1" />
-                    {room.view_type || 'Scenic City Skyline'}
-                  </p>
-                  <h3 className="text-xl font-bold tracking-tight text-white mt-0.5">
-                    {room.category_name}
-                  </h3>
+                    <div className="flex items-center space-x-1 bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-md">
+                      <Star className="w-3 h-3 fill-slate-950 text-slate-950" />
+                      <span>{room.rating?.toFixed(1) || '4.9'}</span>
+                      <span className="text-[10px] font-normal text-slate-800">
+                        ({room.review_count || 50})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bottom View / Category */}
+                  <div>
+                    <p className="text-[11px] text-amber-200 font-semibold uppercase tracking-wider flex items-center drop-shadow-xs">
+                      <Compass className="w-3 h-3 mr-1" />
+                      {room.view_type || 'Scenic City Skyline'}
+                    </p>
+                    <h3 className="text-xl font-bold tracking-tight text-white mt-0.5 drop-shadow-sm">
+                      {room.category_name}
+                    </h3>
+                  </div>
                 </div>
               </div>
 

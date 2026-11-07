@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Room, GuestBookingRequest } from '../types/hotel';
-import { CONCIERGE_ADDONS } from '../services/api';
+import { CONCIERGE_ADDONS, getRoomImageUrl } from '../services/api';
 import {
   X,
   Calendar,
@@ -96,34 +96,44 @@ export const GuestBookingModal: React.FC<GuestBookingModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 overflow-hidden transform transition-all my-8 animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 relative">
+        {/* Header with High-Resolution Room Photo Banner */}
+        <div className="relative h-44 sm:h-52 overflow-hidden text-white bg-slate-900">
+          <img
+            src={getRoomImageUrl(room)}
+            alt={`${room.category_name} - Suite ${room.number}`}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-black/40" />
+
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-1.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 transition-colors z-10"
           >
             <X className="w-5 h-5" />
           </button>
-          <div className="flex items-center space-x-2 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-1">
-            <Sparkles className="w-4 h-4" />
-            <span>Guaranteed Luxury Reservation</span>
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">
-            Suite {room.number} &mdash; {room.category_name}
-          </h2>
-          <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-300">
-            <span className="flex items-center">
-              <Compass className="w-3.5 h-3.5 mr-1 text-indigo-400" />
-              {room.view_type || 'Scenic Horizon View'}
-            </span>
-            <span className="flex items-center">
-              <Bed className="w-3.5 h-3.5 mr-1 text-indigo-400" />
-              {room.bed_type || 'Luxury King Bed'}
-            </span>
-            <span className="font-semibold text-emerald-400 text-sm">
-              ${room.base_price.toFixed(2)} USD / night
-            </span>
+
+          <div className="absolute bottom-4 left-6 right-6">
+            <div className="flex items-center space-x-2 text-amber-300 text-xs font-semibold uppercase tracking-wider mb-1">
+              <Sparkles className="w-4 h-4" />
+              <span>Guaranteed Luxury Reservation</span>
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm">
+              Suite {room.number} &mdash; {room.category_name}
+            </h2>
+            <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs text-slate-200">
+              <span className="flex items-center">
+                <Compass className="w-3.5 h-3.5 mr-1 text-amber-300" />
+                {room.view_type || 'Scenic Horizon View'}
+              </span>
+              <span className="flex items-center">
+                <Bed className="w-3.5 h-3.5 mr-1 text-amber-300" />
+                {room.bed_type || 'Luxury King Bed'}
+              </span>
+              <span className="font-semibold text-emerald-400 text-sm">
+                ${room.base_price.toFixed(2)} USD / night
+              </span>
+            </div>
           </div>
         </div>
 

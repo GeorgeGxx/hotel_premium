@@ -33,6 +33,7 @@ export const mockRooms: Room[] = [
     size_sqft: 280,
     bed_type: '1 Queen Bed',
     view_type: 'City Courtyard View',
+    image_url: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80',
     amenities: ['High-speed Wi-Fi 7', 'Rainfall Shower', 'Smart 4K TV', 'Ergonomic Desk'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -51,6 +52,7 @@ export const mockRooms: Room[] = [
     size_sqft: 420,
     bed_type: '1 King Bed',
     view_type: 'Oceanfront Terrace',
+    image_url: 'https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=80',
     amenities: ['Private Ocean Balcony', 'Nespresso Coffee Bar', 'Italian Marble Bath', 'Curated Minibar'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -69,6 +71,7 @@ export const mockRooms: Room[] = [
     size_sqft: 420,
     bed_type: '2 Queen Beds',
     view_type: 'Poolside Botanical Garden',
+    image_url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80',
     amenities: ['Garden Patio', 'Complimentary Afternoon Tea', 'Plush Bathrobes', 'Acoustic Soundproofing'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -87,6 +90,7 @@ export const mockRooms: Room[] = [
     size_sqft: 850,
     bed_type: 'Master King + 2 Doubles',
     view_type: 'Panoramic Skyline Penthouse',
+    image_url: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
     amenities: ['Private Heated Jacuzzi', '24/7 Dedicated Butler', 'Private Cocktail Lounge', 'Executive Club Access'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -105,6 +109,7 @@ export const mockRooms: Room[] = [
     size_sqft: 420,
     bed_type: '1 King Bed',
     view_type: 'Golden Hour Sunset View',
+    image_url: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80',
     amenities: ['Sunset Balcony', 'Smart Climate Control', 'Hypoallergenic Bedding', 'Dyson Supersonic Care'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -123,11 +128,31 @@ export const mockRooms: Room[] = [
     size_sqft: 900,
     bed_type: 'Grand King Bed',
     view_type: 'VIP Ocean Panorama Corner',
+    image_url: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=80',
     amenities: ['Private Spa Hydro-Pool', 'Private Sommelier Wine Cellar', 'Bang & Olufsen Acoustics', 'VIP Helipad Transfer Service'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
 ];
+
+/**
+ * Returns a high-definition, verified hospitality photography image URL for a given room.
+ * Uses room.image_url if present, otherwise maps to curated luxury suite photos.
+ */
+export function getRoomImageUrl(room: Partial<Room>): string {
+  if (room.image_url && room.image_url.trim() !== '') {
+    return room.image_url;
+  }
+  const category = (room.category_name || '').toLowerCase();
+  const num = room.number || '';
+  if (category.includes('presidential') || category.includes('suite') || num === '202' || num === '302') {
+    return 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (category.includes('deluxe') || num === '102' || num === '201' || num === '301') {
+    return 'https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80';
+}
 
 export const CONCIERGE_ADDONS: import('../types/hotel').ConciergeAddon[] = [
   {

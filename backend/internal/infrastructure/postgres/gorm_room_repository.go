@@ -47,10 +47,12 @@ func (r *GormRoomRepository) FindAll(ctx context.Context) ([]*room.Room, error) 
 			categoryName := ""
 			basePrice := 0.0
 			capacity := 2
+			imageURL := ""
 			if m.Category != nil {
 				categoryName = m.Category.Name
 				basePrice = m.Category.BasePrice
 				capacity = m.Category.Capacity
+				imageURL = m.Category.ImageURL
 			}
 
 			rooms[i] = &room.Room{
@@ -62,6 +64,7 @@ func (r *GormRoomRepository) FindAll(ctx context.Context) ([]*room.Room, error) 
 				Status:       room.Status(m.Status),
 				BasePrice:    basePrice,
 				Capacity:     capacity,
+				ImageURL:     imageURL,
 				Notes:        m.Notes,
 				CreatedAt:    m.CreatedAt,
 				UpdatedAt:    m.UpdatedAt,
@@ -104,10 +107,12 @@ func (r *GormRoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*room.
 	categoryName := ""
 	basePrice := 0.0
 	capacity := 2
+	imageURL := ""
 	if m.Category != nil {
 		categoryName = m.Category.Name
 		basePrice = m.Category.BasePrice
 		capacity = m.Category.Capacity
+		imageURL = m.Category.ImageURL
 	}
 
 	return &room.Room{
@@ -119,6 +124,7 @@ func (r *GormRoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*room.
 		Status:       room.Status(m.Status),
 		BasePrice:    basePrice,
 		Capacity:     capacity,
+		ImageURL:     imageURL,
 		Notes:        m.Notes,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
@@ -145,10 +151,12 @@ func (r *GormRoomRepository) FindByNumber(ctx context.Context, number string) (*
 	categoryName := ""
 	basePrice := 0.0
 	capacity := 2
+	imageURL := ""
 	if m.Category != nil {
 		categoryName = m.Category.Name
 		basePrice = m.Category.BasePrice
 		capacity = m.Category.Capacity
+		imageURL = m.Category.ImageURL
 	}
 
 	return &room.Room{
@@ -160,6 +168,7 @@ func (r *GormRoomRepository) FindByNumber(ctx context.Context, number string) (*
 		Status:       room.Status(m.Status),
 		BasePrice:    basePrice,
 		Capacity:     capacity,
+		ImageURL:     imageURL,
 		Notes:        m.Notes,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,

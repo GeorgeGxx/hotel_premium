@@ -151,11 +151,11 @@ data:
     VALUES ('admin', 'admin@hotelpremium.com', '$2a$12$e8Yd8e7hG.sample.modern.hash.change.me', 'Hotel', 'Administrator', 'ADMIN')
     ON CONFLICT (username) DO NOTHING;
 
-    INSERT INTO room_categories (code, name, description, base_price, capacity)
+    INSERT INTO room_categories (code, name, description, base_price, capacity, image_url)
     VALUES 
-        ('SGL', 'Single Standard', 'Comfortable single room with Queen bed and high-speed Wi-Fi', 65.00, 1),
-        ('DBL', 'Double Deluxe', 'Spacious double room with King bed, mini-bar, and city view', 95.00, 2),
-        ('STE', 'Presidential Suite', 'Luxury suite with panoramic views, Jacuzzi, and private lounge', 220.00, 4)
+        ('SGL', 'Single Standard', 'Comfortable single room with Queen bed and high-speed Wi-Fi', 65.00, 1, 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80'),
+        ('DBL', 'Double Deluxe', 'Spacious double room with King bed, mini-bar, and city view', 95.00, 2, 'https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=80'),
+        ('STE', 'Presidential Suite', 'Luxury suite with panoramic views, Jacuzzi, and private lounge', 220.00, 4, 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80')
     ON CONFLICT (code) DO NOTHING;
 
   02_outbox_events.sql: |

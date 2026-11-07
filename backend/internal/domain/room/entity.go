@@ -32,6 +32,7 @@ type Room struct {
 	Status       Status    `json:"status"`
 	BasePrice    float64   `json:"base_price"`
 	Capacity     int       `json:"capacity"`
+	ImageURL     string    `json:"image_url,omitempty"`
 	Notes        string    `json:"notes,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

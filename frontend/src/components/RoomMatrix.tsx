@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Room, RoomStatus } from '../types/hotel';
+import { getRoomImageUrl } from '../services/api';
 import {
   BedDouble,
   UserPlus,
@@ -156,21 +157,35 @@ export const RoomMatrix: React.FC<RoomMatrixProps> = ({
                 key={room.id}
                 className={`group relative bg-white rounded-xl border border-slate-200 transition-all duration-200 shadow-xs hover:shadow-md ${config.cardBorder} flex flex-col justify-between overflow-hidden`}
               >
-                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${config.bgAccent}`} />
+                {/* Photo Header Strip */}
+                <div className="h-24 w-full relative overflow-hidden bg-slate-900">
+                  <img
+                    src={getRoomImageUrl(room)}
+                    alt={`Room ${room.number}`}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=80';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
+                  <span
+                    className={`absolute top-2 right-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border shadow-xs backdrop-blur-xs ${config.badgeClass}`}
+                  >
+                    {config.label}
+                  </span>
+                  <span className="absolute bottom-1.5 left-2.5 text-[11px] font-bold text-white drop-shadow-xs">
+                    Floor {room.floor}
+                  </span>
+                </div>
 
-                <div className="p-4">
+                <div className="p-3.5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xl font-bold tracking-tight text-slate-900">
-                          {room.number}
-                        </span>
-                        <span
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${config.badgeClass}`}
-                        >
-                          {config.label}
-                        </span>
-                      </div>
+                      <span className="text-xl font-bold tracking-tight text-slate-900">
+                        {room.number}
+                      </span>
                       <p className="text-xs text-slate-500 font-medium mt-0.5">
                         {room.category_name}
                       </p>

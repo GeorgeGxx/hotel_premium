@@ -1,5 +1,6 @@
 import React from 'react';
 import { Room } from '../types/hotel';
+import { getRoomImageUrl } from '../services/api';
 import { X, Check, Bed, Maximize2, Compass, Users } from 'lucide-react';
 
 interface GuestComparisonModalProps {
@@ -39,10 +40,17 @@ export const GuestComparisonModal: React.FC<GuestComparisonModalProps> = ({
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="py-3 px-4 font-bold text-slate-400 uppercase tracking-wider w-1/4">
-                  Feature
+                  Suite Preview
                 </th>
                 {rooms.map((room) => (
-                  <th key={room.id} className="py-3 px-4 font-bold text-slate-900 text-center">
+                  <th key={room.id} className="py-3 px-4 text-center">
+                    <div className="w-full h-28 rounded-xl overflow-hidden mb-2 shadow-xs border border-slate-200 bg-slate-900">
+                      <img
+                        src={getRoomImageUrl(room)}
+                        alt={`Suite ${room.number}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <span className="block text-sm font-bold text-indigo-900">
                       Suite {room.number}
                     </span>
