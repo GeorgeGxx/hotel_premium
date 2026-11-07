@@ -754,9 +754,12 @@ function Invoke-LocalPolicyGate {
 function Invoke-LocalDevSecOpsScan {
     param([switch]$Standalone)
 
-    if ($Standalone) {
-        Show-Banner "Running 6-Gate Shift-Left DevSecOps Security Pipeline (Gitleaks, Semgrep, TFLint, Trivy, Conftest, Cosign)"
-    }
+    $origEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($Standalone) {
+            Show-Banner "Running 6-Gate Shift-Left DevSecOps Security Pipeline (Gitleaks, Semgrep, TFLint, Trivy, Conftest, Cosign)"
+        }
 
     # [1/6] Gitleaks 8.30.1 (using git-tracked staging directory to avoid scanning ignored temp files)
     Write-Host "  ▶ [1/6] Running SAST Secret Detection (Gitleaks 8.30.1)..." -ForegroundColor White
@@ -846,6 +849,9 @@ function Invoke-LocalDevSecOpsScan {
 
     # [6/6] Cosign Supply-Chain Verification
     Invoke-CosignSupplyChainGate
+    } finally {
+        $ErrorActionPreference = $origEap
+    }
 }
 
 # ==============================================================================
@@ -1482,7 +1488,6 @@ function Invoke-MinikubeBootstrap {
     Show-StageHeader "6/9" "Deploying IAM, LGTM Observability, Vault v2.2.0 & OpenCost v2.5.32"
     if (Test-Path "$infraDir\rbac.yaml") { kubectl apply -f "$infraDir\rbac.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\keycloak.yaml") { kubectl apply -f "$infraDir\keycloak.yaml" 2>$null | Out-Null }
-    if (Test-Path "$infraDir\data-exporters.yaml") { kubectl apply -f "$infraDir\data-exporters.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\grafana-dashboards.yaml") { kubectl apply -f "$infraDir\grafana-dashboards.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\observability.yaml") { kubectl apply -f "$infraDir\observability.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\vault.yaml") {
@@ -1572,6 +1577,11 @@ function Invoke-MinikubeBootstrap {
 
     # Ensure Data Tier readiness, Kafka topics & PostgreSQL 18 migrations
     Initialize-LocalDatabaseMigrations
+
+    if (Test-Path "$infraDir\data-exporters.yaml") {
+        Write-Host "  Applying Data Tier Observability Exporters (PostgreSQL, Redis, Kafka)..." -ForegroundColor White
+        kubectl apply -f "$infraDir\data-exporters.yaml" 2>$null | Out-Null
+    }
 
     if ($DeployWithHelm -and (Test-Path $helmChartDir)) {
         Write-Host "  ▶ Deploying Hotel Premium release via Helm 4.3.1 (Server-Side Apply + Watcher + RollbackOnFailure)..." -ForegroundColor White
