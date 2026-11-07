@@ -168,7 +168,7 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 			RETURNING id
 		`
 		newGuestID := uuid.New()
-		if err := tx.Raw(guestQuery, newGuestID, docType, docNum, input.GuestName, input.GuestEmail, input.GuestPhone).Scan(&guestID).Error; err != nil {
+		if err := tx.Raw(guestQuery, newGuestID, docType, docNum, input.GuestName, input.GuestEmail, input.GuestPhone).Row().Scan(&guestID); err != nil {
 			return fmt.Errorf("gorm: failed to upsert guest: %w", err)
 		}
 
@@ -366,7 +366,7 @@ func (r *GormStayRepository) Cancel(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil || roomID == uuid.Nil {
+		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Row().Scan(&roomID); err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
 		}
 
@@ -407,7 +407,7 @@ func (r *GormStayRepository) CheckOut(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Scan(&roomID).Error; err != nil || roomID == uuid.Nil {
+		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Row().Scan(&roomID); err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
 		}
 
