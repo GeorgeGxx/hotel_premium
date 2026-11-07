@@ -41,6 +41,24 @@ roleRef:
   name: opencost
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pricing-configs
+  namespace: opencost
+data:
+  provider: "custom"
+  description: "Minikube Local FinOps Pricing"
+  CPU: "0.031611"
+  spotCPU: "0.006655"
+  RAM: "0.004237"
+  spotRAM: "0.000892"
+  GPU: "0.95"
+  storage: "0.00005479"
+  zoneNetworkEgress: "0.01"
+  regionNetworkEgress: "0.01"
+  internetNetworkEgress: "0.12"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,6 +98,11 @@ spec:
               value: "hotel-premium-local"
             - name: LOG_LEVEL
               value: "info"
+          volumeMounts:
+            - name: configs-vol
+              mountPath: /var/configs
+            - name: tmp-vol
+              mountPath: /tmp
           ports:
             - name: http-metrics
               containerPort: 9003
@@ -126,6 +149,11 @@ spec:
               port: 7000
             initialDelaySeconds: 10
             periodSeconds: 15
+      volumes:
+        - name: configs-vol
+          emptyDir: {}
+        - name: tmp-vol
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
