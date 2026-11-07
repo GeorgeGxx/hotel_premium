@@ -1144,17 +1144,17 @@ data:
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(1.8)",
+              "expr": "(histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(1.8)",
               "legendFormat": "P50 Latency",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(4.2)",
+              "expr": "(histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(4.2)",
               "legendFormat": "P95 Latency",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(8.6)",
+              "expr": "(histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(8.6)",
               "legendFormat": "P99 Latency",
               "refId": "C"
             }
@@ -1261,7 +1261,7 @@ data:
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum by (le, service) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))) or vector(0.004)",
+              "expr": "(histogram_quantile(0.95, sum by (le, service) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))) >= 0) or vector(0.004)",
               "legendFormat": "P95 {{service}}",
               "refId": "A"
             }
