@@ -429,7 +429,7 @@ export const App: React.FC = () => {
           <div className="flex items-center space-x-4 text-[11px] text-slate-400">
             <span>Kong Gateway 3.9.4 (DB-less)</span>
             <span>&bull;</span>
-            <span>Kafka 7.8 (KRaft)</span>
+            <span>Kafka 8.3.2 (KRaft)</span>
             <span>&bull;</span>
             <span>Keycloak 26.8.1</span>
             <span>&bull;</span>
@@ -437,7 +437,7 @@ export const App: React.FC = () => {
             <span>&bull;</span>
             <span>PostgreSQL 18</span>
             <span>&bull;</span>
-            <span>OpenTelemetry Collector 0.159</span>
+            <span>Grafana Alloy 1.21 (OTel)</span>
           </div>
         </div>
       </footer>
