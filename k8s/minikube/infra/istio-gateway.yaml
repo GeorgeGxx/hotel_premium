@@ -153,6 +153,10 @@ spec:
       to:
         - operation:
             ports: ["80", "5173", "8000", "8081", "8082", "8083", "8084", "5432", "6379", "9092"]
+    # Allow frontend web traffic (HTTP 80 / 5173) from external / port-forward clients
+    - to:
+        - operation:
+            ports: ["80", "5173"]
     # Allow Prometheus and monitoring tools to scrape metrics & health endpoints
     - to:
         - operation:
