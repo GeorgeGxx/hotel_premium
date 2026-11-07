@@ -12,7 +12,7 @@ metadata:
   name: prometheus-server
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
+    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods", "pods/log", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
@@ -768,6 +768,39 @@ data:
       format = "logfmt"
     }
 
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        target_label  = "service"
+      }
+    }
+
+    loki.source.kubernetes "pod_logs" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.write.default.receiver]
+    }
+
     otelcol.receiver.otlp "default" {
       grpc {
         endpoint = "0.0.0.0:4317"
@@ -841,6 +874,7 @@ spec:
         app.kubernetes.io/name: alloy
         app.kubernetes.io/version: "v1.21.0"
     spec:
+      serviceAccountName: prometheus-server
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

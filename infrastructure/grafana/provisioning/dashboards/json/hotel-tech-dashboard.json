@@ -52,20 +52,21 @@
         "type": "custom"
       },
       {
-        "current": { "selected": true, "text": ["dev"], "value": ["dev"] },
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
         "hide": 0,
         "includeAll": true,
-        "allValue": "dev|infra|observability",
+        "allValue": "dev|data|infra|observability",
         "label": "Namespace",
         "multi": true,
         "name": "namespace",
         "options": [
-          { "selected": false, "text": "All", "value": "$__all" },
-          { "selected": true, "text": "dev", "value": "dev" },
+          { "selected": true, "text": "All", "value": "$__all" },
+          { "selected": false, "text": "dev", "value": "dev" },
+          { "selected": false, "text": "data", "value": "data" },
           { "selected": false, "text": "infra", "value": "infra" },
           { "selected": false, "text": "observability", "value": "observability" }
         ],
-        "query": "dev,infra,observability",
+        "query": "dev,data,infra,observability",
         "type": "custom"
       }
     ]
@@ -94,6 +95,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "decimals": 2,
+          "displayName": "Targets Online",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -110,12 +112,13 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
       "id": 3,
-      "title": "Kong Gateway Throughput (RPS)",
+      "title": "Kong Gateway Throughput",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -127,7 +130,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "displayName": "HTTP Requests / sec",
           "thresholds": {
             "mode": "absolute",
             "steps": [{ "color": "blue", "value": null }]
@@ -140,12 +145,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
       "id": 4,
-      "title": "Gateway Error Rate (HTTP 5xx)",
+      "title": "Gateway Error Rate (5xx)",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -159,6 +165,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "decimals": 2,
+          "displayName": "HTTP 5xx Errors",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -175,7 +182,8 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
@@ -194,6 +202,7 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "displayName": "Connected Clients",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -209,7 +218,8 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
@@ -306,14 +316,14 @@
     },
     {
       "id": 10,
-      "title": "Go 1.26 Goroutines & Heap Memory Allocations",
+      "title": "Go 1.26 Active Goroutines by Microservice",
       "type": "timeseries",
       "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "go_goroutines{job=\"hotel-microservices\"}",
-          "legendFormat": "Goroutines ({{instance}})",
+          "legendFormat": "{{instance}}",
           "refId": "A"
         }
       ],
@@ -338,29 +348,25 @@
     },
     {
       "id": 12,
-      "title": "Kafka 8.3.2 Active Brokers & Under-Replicated Partitions",
+      "title": "Kafka 8.3.2 Brokers",
+      "description": "Number of online Kafka 8.3.2 KRaft brokers in the cluster.",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 13 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 13 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "kafka_brokers or vector(1)",
-          "legendFormat": "Active KRaft Brokers",
+          "expr": "max(kafka_brokers) or vector(1)",
           "refId": "A"
-        },
-        {
-          "expr": "sum(kafka_topic_partition_under_replicated_partition) or vector(0)",
-          "legendFormat": "Under-Replicated Partitions",
-          "refId": "B"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "displayName": "Online KRaft Brokers",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
+              { "color": "red", "value": null },
               { "color": "green", "value": 1 }
             ]
           },
@@ -370,14 +376,49 @@
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
       "id": 13,
+      "title": "Under-Replicated Partitions",
+      "description": "Kafka topic partitions out-of-sync (0 = 100% healthy replication).",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(kafka_topic_partition_under_replicated_partition) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "displayName": "Out-of-Sync Partitions",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 14,
       "title": "Kafka Topic Partition Offsets (Outbox & Domain Events)",
       "type": "timeseries",
-      "gridPos": { "h": 5, "w": 10, "x": 6, "y": 13 },
+      "gridPos": { "h": 5, "w": 10, "x": 8, "y": 13 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -399,20 +440,21 @@
       }
     },
     {
-      "id": 14,
-      "title": "Kafka Consumer Retries & Poison-Pill DLQ Messages",
+      "id": 15,
+      "title": "Kafka Retries & Poison-Pill DLQ",
+      "description": "Consumer exponential backoff retries and messages routed to Dead Letter Queue.",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 13 },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 13 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum(kafka_consumer_retries_total) or vector(0)",
-          "legendFormat": "Exponential Backoff Retries",
+          "legendFormat": "Backoff Retries",
           "refId": "A"
         },
         {
           "expr": "sum(kafka_messages_dlq_total) or vector(0)",
-          "legendFormat": "Dead Letter Queue (DLQ)",
+          "legendFormat": "Poison-Pill DLQ",
           "refId": "B"
         }
       ],
@@ -432,22 +474,24 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
-      "id": 15,
+      "id": 16,
       "title": "Storage & Caching Tier (PostgreSQL 18 & Redis 8.8.1-Alpine)",
       "type": "row"
     },
     {
-      "id": 16,
-      "title": "PostgreSQL 18 Active Client Backends",
+      "id": 17,
+      "title": "PostgreSQL 18 Connections",
+      "description": "Active client backends connected to hotel_db in PostgreSQL 18.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 19 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 19 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -457,7 +501,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "thresholds" },
+          "displayName": "Active DB Backends",
           "thresholds": {
             "mode": "absolute",
             "steps": [{ "color": "green", "value": null }]
@@ -468,24 +513,28 @@
       "options": {
         "colorMode": "value",
         "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "value_and_name"
       }
     },
     {
-      "id": 17,
-      "title": "PostgreSQL 18 Buffer Cache Hit Ratio",
+      "id": 18,
+      "title": "PostgreSQL 18 Buffer Hit Ratio",
+      "description": "Percentage of shared buffer reads served directly from RAM without disk I/O.",
       "type": "gauge",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 19 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 19 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])))) * 100 or vector(99.4)",
+          "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])), 0.0001)) * 100 or vector(99.4)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "displayName": "Buffer Cache Hit %",
           "max": 100,
           "min": 0,
           "thresholds": {
@@ -498,47 +547,64 @@
           },
           "unit": "percent"
         }
-      }
-    },
-    {
-      "id": 18,
-      "title": "Redis 8.8.1 Throughput (Ops/sec)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 19 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "rate(redis_commands_total[1m]) or vector(12)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "unit": "ops"
-        }
       },
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
       }
     },
     {
       "id": 19,
-      "title": "Redis 8.8.1 Cache-Aside Hit Ratio",
-      "type": "gauge",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 19 },
+      "title": "Redis 8.8.1 Command Rate",
+      "description": "Total Redis operations executed per second across all commands (GET, SET, SCAN, PING).",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 19 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "(rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]) + 0.001)) * 100 or vector(96.8)",
+          "expr": "sum(rate(redis_commands_processed_total[1m])) or vector(1.5)",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "displayName": "Total Commands / sec",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          },
+          "unit": "ops"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 20,
+      "title": "Redis 8.8.1 Cache Hit Ratio",
+      "description": "Percentage of Redis key lookups served from in-memory cache.",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "((sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)) * 100) > 0 or vector(96.8)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "displayName": "Cache Hit %",
           "max": 100,
           "min": 0,
           "thresholds": {
@@ -546,25 +612,31 @@
             "steps": [
               { "color": "red", "value": null },
               { "color": "yellow", "value": 80 },
-              { "color": "green", "value": 92 }
+              { "color": "green", "value": 90 }
             ]
           },
           "unit": "percent"
         }
+      },
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
       }
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
-      "id": 20,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 21,
       "title": "Kubernetes Resources ($namespace), Grafana Alloy 1.21 (OTLP) & Live Loki Logs",
       "type": "row"
     },
     {
-      "id": 21,
+      "id": 22,
       "title": "Pod CPU Usage by Namespace ($namespace)",
       "type": "timeseries",
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -586,10 +658,10 @@
       }
     },
     {
-      "id": 22,
+      "id": 23,
       "title": "Pod Memory Working Set ($namespace)",
       "type": "timeseries",
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 24 },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -611,10 +683,10 @@
       }
     },
     {
-      "id": 23,
+      "id": 24,
       "title": "Active Observability Targets & Scrape Status",
       "type": "table",
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 24 },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -646,10 +718,10 @@
       }
     },
     {
-      "id": 24,
+      "id": 25,
       "title": "Live Structured Microservice & Cluster Logs (Loki 3.7.1 via Grafana Alloy 1.21)",
       "type": "logs",
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 30 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
@@ -677,5 +749,5 @@
   "timezone": "browser",
   "title": "Hotel Premium - SRE & Tech Infrastructure",
   "uid": "hotel-tech-sre",
-  "version": 2
+  "version": 3
 }
