@@ -1,4 +1,5 @@
-﻿# ==============================================================================
+﻿#Requires -Version 7.0
+# ==============================================================================
 # Hotel Premium - Minikube & Cloud DevSecOps Platform Orchestrator (UNIFIED)
 # Fully self-contained orchestrator for local Kubernetes development, SRE & Cloud.
 # Strict Version Baseline:
@@ -83,6 +84,18 @@ param(
     [int]$MemoryMb = 8192,
     [string]$DiskSize = "40g"
 )
+
+# Strict Runtime Guard: PowerShell 7+ (pwsh) Required
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Host "`n================================================================================" -ForegroundColor Red
+    Write-Host " 🛑 POWERSHELL 7+ REQUIRED" -ForegroundColor Red
+    Write-Host "================================================================================" -ForegroundColor Red
+    Write-Host " platform-minikube.ps1 requires modern PowerShell 7.0+ (pwsh.exe)." -ForegroundColor Yellow
+    Write-Host " Detected runtime: Windows PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor White
+    Write-Host " Please execute using: pwsh -File .\platform-minikube.ps1 $Command" -ForegroundColor Cyan
+    Write-Host "================================================================================`n" -ForegroundColor Red
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -962,7 +975,7 @@ function Initialize-LocalKeycloak {
 
     Write-Host "  ▶ Initializing Keycloak realm, clients and users..." -ForegroundColor White
     try {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -KeycloakUrl "http://localhost:8181" -AdminUser "admin" -AdminPassword "admin"
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -KeycloakUrl "http://localhost:8181" -AdminUser "admin" -AdminPassword "admin"
         if ($LASTEXITCODE -eq 0) {
             Show-Success "Keycloak 'hotel-realm' and users ('admin_user', 'basic_user') configured for frontend integration."
         } else {
