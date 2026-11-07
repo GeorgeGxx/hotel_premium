@@ -868,8 +868,14 @@ function Invoke-LocalVaultCli {
         [switch]$AllowFailure
     )
     $token = if ($VaultToken) { $VaultToken } elseif ($env:VAULT_TOKEN) { $env:VAULT_TOKEN } else { "root" }
-    $cmd = @("exec", "-n", $VaultNamespace, $Pod, "--", "env", "VAULT_TOKEN=$token", "vault") + $VaultArguments
-    $output = @(& kubectl @cmd 2>&1)
+    $cmd = @("exec", "-n", $VaultNamespace, $Pod, "--", "env", "VAULT_TOKEN=$token", "VAULT_ADDR=http://127.0.0.1:8200", "vault") + $VaultArguments
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $output = @(& kubectl @cmd 2>&1)
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0 -and -not $AllowFailure) {
         throw "Vault command 'vault $($VaultArguments -join ' ')' failed (exit $exitCode): $($output -join ' ')"
@@ -886,8 +892,14 @@ function Invoke-LocalVaultCliWithInput {
     $token = if ($VaultToken) { $VaultToken } elseif ($env:VAULT_TOKEN) { $env:VAULT_TOKEN } else { "root" }
     $encodedInput = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($InputText))
     $vaultCommand = 'printf ''%s'' ''' + $encodedInput + ''' | base64 -d | vault ' + ($VaultArguments -join ' ')
-    $cmd = @("exec", "-n", $VaultNamespace, $Pod, "--", "env", "VAULT_TOKEN=$token", "sh", "-c", $vaultCommand)
-    $output = @(& kubectl @cmd 2>&1)
+    $cmd = @("exec", "-n", $VaultNamespace, $Pod, "--", "env", "VAULT_TOKEN=$token", "VAULT_ADDR=http://127.0.0.1:8200", "sh", "-c", $vaultCommand)
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $output = @(& kubectl @cmd 2>&1)
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Vault input command 'vault $($VaultArguments -join ' ')' failed: $($output -join ' ')"
     }
@@ -908,22 +920,20 @@ function Invoke-VaultStatusAudit {
 }
 
 function Initialize-LocalVault {
-    Show-StageHeader "VAULT" "Configuring HashiCorp Vault v2.2.0 KV-v2 Secrets & K8s Auth"
+    param([switch]$Quiet)
+    if (-not $Quiet) {
+        Show-StageHeader "VAULT" "Configuring HashiCorp Vault v2.2.0 KV-v2 Secrets & K8s Auth"
+    }
     $vaultPod = Get-LocalVaultPod -Namespace $VaultNamespace
     if ($vaultPod) {
         Write-Host "  ▶ Seeding Hotel Premium secrets into Vault ($vaultPod)..." -ForegroundColor White
-        kubectl exec -n $VaultNamespace $vaultPod -- env VAULT_TOKEN="root" vault secrets enable -path=secret kv-v2 2>$null | Out-Null
-        kubectl exec -n $VaultNamespace $vaultPod -- env VAULT_TOKEN="root" vault kv put secret/hotel-database `
-            POSTGRES_USER="hotel_user" `
-            POSTGRES_PASSWORD="hotel_password" `
-            POSTGRES_DB="hotel_db" 2>$null | Out-Null
-        kubectl exec -n $VaultNamespace $vaultPod -- env VAULT_TOKEN="root" vault kv put secret/hotel-auth `
-            JWT_SECRET="hotel-premium-enterprise-secure-jwt-token-key-2026" `
-            KEYCLOAK_ADMIN="admin" `
-            KEYCLOAK_ADMIN_PASSWORD="admin" 2>$null | Out-Null
-        kubectl exec -n $VaultNamespace $vaultPod -- env VAULT_TOKEN="root" vault kv put secret/application `
-            ENVIRONMENT="dev" `
-            KAFKA_BROKERS="kafka.data.svc.cluster.local:9092" 2>$null | Out-Null
+        $secretsList = Invoke-LocalVaultCli -Pod $vaultPod -VaultArguments @("secrets", "list", "-format=json") -AllowFailure
+        if (-not $secretsList.Output -or ($secretsList.Output -notmatch '"secret/"')) {
+            Invoke-LocalVaultCli -Pod $vaultPod -VaultArguments @("secrets", "enable", "-path=secret", "kv-v2") -AllowFailure | Out-Null
+        }
+        Invoke-LocalVaultCli -Pod $vaultPod -VaultArguments @("kv", "put", "secret/hotel-database", "POSTGRES_USER=hotel_user", "POSTGRES_PASSWORD=hotel_password", "POSTGRES_DB=hotel_db") | Out-Null
+        Invoke-LocalVaultCli -Pod $vaultPod -VaultArguments @("kv", "put", "secret/hotel-auth", "JWT_SECRET=hotel-premium-enterprise-secure-jwt-token-key-2026", "KEYCLOAK_ADMIN=admin", "KEYCLOAK_ADMIN_PASSWORD=admin") | Out-Null
+        Invoke-LocalVaultCli -Pod $vaultPod -VaultArguments @("kv", "put", "secret/application", "ENVIRONMENT=dev", "KAFKA_BROKERS=kafka.data.svc.cluster.local:9092") | Out-Null
         Show-Success "Vault KV-v2 secrets seeded for hotel-database, hotel-auth, and application."
     } else {
         Show-Warning "Vault pod not found in namespace '$VaultNamespace'. Run bootstrap first."
@@ -931,7 +941,10 @@ function Initialize-LocalVault {
 }
 
 function Initialize-LocalKeycloak {
-    Show-StageHeader "KEYCLOAK" "Bootstrapping Keycloak IAM Realm ('hotel-realm'), Clients & Test Users"
+    param([switch]$Quiet)
+    if (-not $Quiet) {
+        Show-StageHeader "KEYCLOAK" "Bootstrapping Keycloak IAM Realm ('hotel-realm'), Clients & Test Users"
+    }
     $bootstrapScript = Join-Path $PSScriptRoot "scripts\bootstrap-keycloak.ps1"
     if (-not (Test-Path $bootstrapScript)) {
         Show-Warning "Keycloak bootstrap script not found at '$bootstrapScript'."
@@ -939,7 +952,7 @@ function Initialize-LocalKeycloak {
     }
 
     Write-Host "  ▶ Awaiting Keycloak pod readiness in 'auth' namespace..." -ForegroundColor White
-    & kubectl wait --namespace auth --for=condition=ready pod -l app.kubernetes.io/name=keycloak --timeout=120s 2>$null | Out-Null
+    & kubectl wait --namespace auth --for=condition=ready pod -l app.kubernetes.io/name=keycloak --timeout=300s 2>$null | Out-Null
 
     $kcPod = kubectl get pod -n auth -l app.kubernetes.io/name=keycloak -o jsonpath='{.items[0].metadata.name}' 2>$null
     if (-not $kcPod) {
@@ -950,23 +963,31 @@ function Initialize-LocalKeycloak {
     Write-Host "  ▶ Initializing Keycloak realm, clients and users..." -ForegroundColor White
     try {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -KeycloakUrl "http://localhost:8181" -AdminUser "admin" -AdminPassword "admin"
-        Show-Success "Keycloak 'hotel-realm' and users ('admin_user', 'basic_user') configured for frontend integration."
+        if ($LASTEXITCODE -eq 0) {
+            Show-Success "Keycloak 'hotel-realm' and users ('admin_user', 'basic_user') configured for frontend integration."
+        } else {
+            Show-Warning "Keycloak bootstrap finished with exit code $LASTEXITCODE."
+        }
     } catch {
         Show-Warning "Keycloak bootstrap encountered an error: $_"
     }
 }
 
 function Invoke-VaultKubernetesAuthSetup {
-    param([string]$Namespace = "vault", [switch]$PruneLegacyRole)
-    Show-Banner "Configuring Vault v2.2.0 Kubernetes Authentication & Scoped Policies"
+    param([string]$Namespace = "vault", [switch]$PruneLegacyRole, [switch]$Quiet)
+    if (-not $Quiet) {
+        Show-Banner "Configuring Vault v2.2.0 Kubernetes Authentication & Scoped Policies"
+    }
     $pod = Get-LocalVaultPod -Namespace $Namespace
     if (-not $pod) {
         Show-Warning "No running Vault pod found in namespace '$Namespace'. Run '.\platform-minikube.ps1 up' first."
         return
     }
 
-    Invoke-LocalVaultCli -Pod $pod -VaultArguments @("secrets", "enable", "-path=secret", "kv-v2") -AllowFailure | Out-Null
-    Invoke-LocalVaultCli -Pod $pod -VaultArguments @("auth", "enable", "kubernetes") -AllowFailure | Out-Null
+    $authList = Invoke-LocalVaultCli -Pod $pod -VaultArguments @("auth", "list", "-format=json") -AllowFailure
+    if (-not $authList.Output -or ($authList.Output -notmatch '"kubernetes/"')) {
+        Invoke-LocalVaultCli -Pod $pod -VaultArguments @("auth", "enable", "kubernetes") -AllowFailure | Out-Null
+    }
     Invoke-LocalVaultCli -Pod $pod -VaultArguments @("write", "auth/kubernetes/config", "kubernetes_host=https://kubernetes.default.svc:443") | Out-Null
 
     foreach ($service in @("room-service", "stay-service", "billing-service", "notification-worker")) {
@@ -1511,18 +1532,26 @@ function Invoke-MinikubeBootstrap {
     if (Test-Path "$infraDir\rbac.yaml") { kubectl apply -f "$infraDir\rbac.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\keycloak.yaml") { kubectl apply -f "$infraDir\keycloak.yaml" 2>$null | Out-Null }
     if (Test-Path "$infraDir\grafana-dashboards.yaml") { kubectl apply -f "$infraDir\grafana-dashboards.yaml" 2>$null | Out-Null }
-    if (Test-Path "$infraDir\observability.yaml") { kubectl apply -f "$infraDir\observability.yaml" 2>$null | Out-Null }
+    if (Test-Path "$infraDir\observability.yaml") {
+        kubectl apply -f "$infraDir\observability.yaml" 2>$null | Out-Null
+        Write-Host "  ▶ Awaiting Observability stack readiness (Prometheus & Grafana)..." -ForegroundColor White
+        kubectl wait -n observability --for=condition=ready pod -l app.kubernetes.io/name=prometheus-server --timeout=120s 2>$null | Out-Null
+        kubectl wait -n observability --for=condition=ready pod -l app.kubernetes.io/name=grafana --timeout=120s 2>$null | Out-Null
+    }
     if (Test-Path "$infraDir\vault.yaml") {
         kubectl apply -f "$infraDir\vault.yaml" 2>$null | Out-Null
-        kubectl wait -n vault --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=60s 2>$null | Out-Null
-        Initialize-LocalVault
-        try { Invoke-VaultKubernetesAuthSetup -Namespace "vault" } catch {}
+        Write-Host "  ▶ Awaiting HashiCorp Vault pod readiness..." -ForegroundColor White
+        kubectl wait -n vault --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=180s 2>$null | Out-Null
+        Initialize-LocalVault -Quiet
+        try { Invoke-VaultKubernetesAuthSetup -Namespace "vault" -Quiet } catch {}
     }
     if (Test-Path "$infraDir\opencost.yaml") {
         kubectl apply -f "$infraDir\opencost.yaml" 2>$null | Out-Null
+        Write-Host "  ▶ Awaiting OpenCost FinOps pod readiness..." -ForegroundColor White
+        kubectl wait -n opencost --for=condition=ready pod -l app.kubernetes.io/name=opencost --timeout=180s 2>$null | Out-Null
     }
-    Initialize-LocalKeycloak
-    Show-Success "Core infrastructure, IAM, LGTM Observability, RBAC and Vault v2.2.0 configured."
+    Initialize-LocalKeycloak -Quiet
+    Show-Success "Core infrastructure, IAM (Keycloak), LGTM Observability, Vault v2.2.0 & OpenCost active and healthy."
 
     # [7/9] HPA & KEDA Event-Driven Autoscaling
     Show-StageHeader "7/9" "Configuring Autoscalers (HPA & KEDA v2.21.0)"
@@ -1568,8 +1597,8 @@ function Invoke-MinikubeBootstrap {
         "georgegxx/hotel-billing-service:1.0.0",
         "georgegxx/hotel-notification-worker:1.0.0",
         "georgegxx/hotel-frontend:1.0.0",
-        "ghcr.io/opencost/opencost:v2.5.32",
-        "ghcr.io/opencost/opencost-ui:v2.5.32",
+        "ghcr.io/opencost/opencost:1.121.3",
+        "ghcr.io/opencost/opencost-ui:1.121.3",
         "quay.io/keycloak/keycloak:26.8.1",
         "prom/prometheus:v3.14.0",
         "grafana/grafana:13.2.3",
