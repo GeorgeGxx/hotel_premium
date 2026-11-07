@@ -1,14 +1,224 @@
-# Hotel Premium Services Manifests for Minikube
+# ==============================================================================
+# Hotel Premium Services & Data Infrastructure Manifests for Minikube
+# Strict Version Baseline:
+#   PostgreSQL: 18-alpine | Redis: 8.8.1-alpine | Kafka: 8.3.2 (KRaft)
+#   Microservices: Go 1.26 (Alpine 3.23) | Frontend: React 19 + Nginx 1.29 (Non-Root)
+# Security & Standards:
+#   - Zero Orphan Deployments: Unified PostgreSQL 18 instance with auto-init
+#   - Restricted Pod Security Standards (runAsNonRoot, capabilities.drop: ALL)
+#   - Zero-Downtime RollingUpdate (maxSurge: 1, maxUnavailable: 0)
+#   - Health Probes (Exec/HTTP/TCP with timeout & failure thresholds)
+#   - Ingress Routing through Kong Gateway (kong-proxy.dev.svc.cluster.local:8000)
+# ==============================================================================
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hotel-postgres-init
   namespace: data
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: hotel-premium
 data:
-  000001_init.sql: |
+  00_init_extensions.sql: |
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "btree_gist";
+
+  01_init_schema.sql: |
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "btree_gist";
+
+    CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username VARCHAR(50) NOT NULL UNIQUE,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
+        role VARCHAR(30) NOT NULL DEFAULT 'RECEPTIONIST' CHECK (role IN ('ADMIN', 'MANAGER', 'RECEPTIONIST', 'HOUSEKEEPING')),
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cash_shifts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        opened_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at TIMESTAMPTZ,
+        opening_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        closing_amount NUMERIC(12, 2),
+        actual_closing_amount NUMERIC(12, 2),
+        difference NUMERIC(12, 2) GENERATED ALWAYS AS (actual_closing_amount - closing_amount) STORED,
+        status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS room_categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code VARCHAR(30) NOT NULL UNIQUE,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        base_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        capacity INT NOT NULL DEFAULT 2 CHECK (capacity > 0),
+        image_url VARCHAR(500),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS rooms (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        number VARCHAR(20) NOT NULL UNIQUE,
+        category_id UUID NOT NULL REFERENCES room_categories(id) ON DELETE RESTRICT,
+        floor INT NOT NULL DEFAULT 1,
+        status VARCHAR(30) NOT NULL DEFAULT 'AVAILABLE' 
+            CHECK (status IN ('AVAILABLE', 'OCCUPIED', 'DIRTY', 'CLEANING', 'MAINTENANCE', 'BLOCKED')),
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS guests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_type VARCHAR(20) NOT NULL CHECK (document_type IN ('PASSPORT', 'NATIONAL_ID', 'DRIVERS_LICENSE', 'OTHER')),
+        document_number VARCHAR(50) NOT NULL UNIQUE,
+        full_name VARCHAR(200) NOT NULL,
+        email VARCHAR(255),
+        phone VARCHAR(30),
+        nationality VARCHAR(100),
+        is_vip BOOLEAN NOT NULL DEFAULT false,
+        stay_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS stays (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
+        primary_guest_id UUID NOT NULL REFERENCES guests(id) ON DELETE RESTRICT,
+        cash_shift_id UUID REFERENCES cash_shifts(id) ON DELETE SET NULL,
+        registered_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        stay_period TSTZRANGE NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE' 
+            CHECK (status IN ('RESERVED', 'ACTIVE', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW')),
+        nightly_rate NUMERIC(10, 2) NOT NULL CHECK (nightly_rate >= 0),
+        total_nights INT NOT NULL DEFAULT 1 CHECK (total_nights > 0),
+        deposit_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        payment_status VARCHAR(20) NOT NULL DEFAULT 'PENDING' 
+            CHECK (payment_status IN ('PENDING', 'PARTIAL', 'PAID', 'REFUNDED')),
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'stays_room_period_exclusion'
+        ) THEN
+            ALTER TABLE stays
+                ADD CONSTRAINT stays_room_period_exclusion
+                EXCLUDE USING gist (room_id WITH =, stay_period WITH &&)
+                WHERE (status IN ('RESERVED', 'ACTIVE'));
+        END IF;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS products (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sku VARCHAR(50) NOT NULL UNIQUE,
+        name VARCHAR(150) NOT NULL,
+        description TEXT,
+        cost_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        sale_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        current_stock INT NOT NULL DEFAULT 0 CHECK (current_stock >= 0),
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS stay_charges (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        stay_id UUID NOT NULL REFERENCES stays(id) ON DELETE CASCADE,
+        product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+        description VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
+        unit_price NUMERIC(10, 2) NOT NULL CHECK (unit_price >= 0),
+        total_price NUMERIC(10, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT INTO users (username, email, password_hash, first_name, last_name, role)
+    VALUES ('admin', 'admin@hotelpremium.com', '$2a$12$e8Yd8e7hG.sample.modern.hash.change.me', 'Hotel', 'Administrator', 'ADMIN')
+    ON CONFLICT (username) DO NOTHING;
+
+    INSERT INTO room_categories (code, name, description, base_price, capacity)
+    VALUES 
+        ('SGL', 'Single Standard', 'Comfortable single room with Queen bed and high-speed Wi-Fi', 65.00, 1),
+        ('DBL', 'Double Deluxe', 'Spacious double room with King bed, mini-bar, and city view', 95.00, 2),
+        ('STE', 'Presidential Suite', 'Luxury suite with panoramic views, Jacuzzi, and private lounge', 220.00, 4)
+    ON CONFLICT (code) DO NOTHING;
+
+  02_outbox_events.sql: |
+    CREATE TABLE IF NOT EXISTS stay_outbox_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        aggregate_type VARCHAR(50) NOT NULL,
+        aggregate_id UUID NOT NULL,
+        event_type VARCHAR(100) NOT NULL,
+        payload JSONB NOT NULL,
+        trace_id VARCHAR(64),
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PUBLISHED', 'FAILED')),
+        retry_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        published_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_outbox_events_pending 
+        ON stay_outbox_events (created_at ASC) 
+        WHERE (status = 'PENDING');
+
+    CREATE INDEX IF NOT EXISTS idx_stays_status ON stays (status);
+    CREATE INDEX IF NOT EXISTS idx_stays_room_status ON stays (room_id, status);
+    CREATE INDEX IF NOT EXISTS idx_stays_guest ON stays (primary_guest_id);
+
+  03_seed_luxury_rooms.sql: |
+    INSERT INTO rooms (number, category_id, floor, status, notes)
+    SELECT '101', id, 1, 'AVAILABLE', 'Corner Deluxe Single with Garden Terrace' FROM room_categories WHERE code = 'SGL'
+    ON CONFLICT (number) DO NOTHING;
+
+    INSERT INTO rooms (number, category_id, floor, status, notes)
+    SELECT '102', id, 1, 'AVAILABLE', 'Garden View Double Deluxe with King Bed' FROM room_categories WHERE code = 'DBL'
+    ON CONFLICT (number) DO NOTHING;
+
+    INSERT INTO rooms (number, category_id, floor, status, notes)
+    SELECT '201', id, 2, 'AVAILABLE', 'Executive Suite with Ocean View Balcony' FROM room_categories WHERE code = 'DBL'
+    ON CONFLICT (number) DO NOTHING;
+
+    INSERT INTO rooms (number, category_id, floor, status, notes)
+    SELECT '301', id, 3, 'AVAILABLE', 'Presidential Panoramic Penthouse Suite & Private Jacuzzi' FROM room_categories WHERE code = 'STE'
+    ON CONFLICT (number) DO NOTHING;
+
+  04_create_audit_logs.sql: |
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID,
+        user_role VARCHAR(50) NOT NULL DEFAULT 'USER',
+        action VARCHAR(100) NOT NULL,
+        entity VARCHAR(50) NOT NULL,
+        entity_id VARCHAR(100) NOT NULL,
+        payload_before JSONB,
+        payload_after JSONB,
+        client_ip VARCHAR(50),
+        trace_id VARCHAR(64),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs (action);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_trace_id ON audit_logs (trace_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
+
 ---
+# Authoritative PostgreSQL 18 Instance for Minikube Data Tier
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,8 +228,11 @@ metadata:
     app: postgres
     app.kubernetes.io/name: postgres
     app.kubernetes.io/version: "18-alpine"
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: postgres
@@ -27,11 +240,24 @@ spec:
     metadata:
       labels:
         app: postgres
+        app.kubernetes.io/name: postgres
     spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
       containers:
         - name: postgres
           image: postgres:18-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: POSTGRES_USER
               value: "hotel_user"
@@ -39,8 +265,11 @@ spec:
               value: "hotel_password"
             - name: POSTGRES_DB
               value: "hotel_db"
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
           ports:
-            - containerPort: 5432
+            - name: postgresql
+              containerPort: 5432
           resources:
             requests:
               cpu: 100m
@@ -48,216 +277,71 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "exec pg_isready -U hotel_user -d hotel_db -h 127.0.0.1"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "exec pg_isready -U hotel_user -d hotel_db -h 127.0.0.1"
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
       volumes:
         - name: init-scripts
           configMap:
             name: hotel-postgres-init
+        - name: postgres-storage
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
   namespace: data
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 5432
+    - name: postgresql
+      port: 5432
       targetPort: 5432
   selector:
     app: postgres
+
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: postgres-room
-  namespace: data
-  labels:
-    app: postgres-room
-    app.kubernetes.io/name: postgres-room
-    app.kubernetes.io/version: "18-alpine"
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres-room
-  template:
-    metadata:
-      labels:
-        app: postgres-room
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:18-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: POSTGRES_USER
-              value: "hotel_user"
-            - name: POSTGRES_PASSWORD
-              value: "hotel_password"
-            - name: POSTGRES_DB
-              value: "hotel_rooms_db"
-          ports:
-            - containerPort: 5432
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-          volumeMounts:
-            - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d
-      volumes:
-        - name: init-scripts
-          configMap:
-            name: hotel-postgres-init
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-room
-  namespace: data
-  labels:
-    app: postgres-room
-spec:
-  ports:
-    - port: 5432
-      targetPort: 5432
-  selector:
-    app: postgres-room
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: postgres-stay
-  namespace: data
-  labels:
-    app: postgres-stay
-    app.kubernetes.io/name: postgres-stay
-    app.kubernetes.io/version: "18-alpine"
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres-stay
-  template:
-    metadata:
-      labels:
-        app: postgres-stay
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:18-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: POSTGRES_USER
-              value: "hotel_user"
-            - name: POSTGRES_PASSWORD
-              value: "hotel_password"
-            - name: POSTGRES_DB
-              value: "hotel_stays_db"
-          ports:
-            - containerPort: 5432
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-          volumeMounts:
-            - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d
-      volumes:
-        - name: init-scripts
-          configMap:
-            name: hotel-postgres-init
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-stay
-  namespace: data
-  labels:
-    app: postgres-stay
-spec:
-  ports:
-    - port: 5432
-      targetPort: 5432
-  selector:
-    app: postgres-stay
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: postgres-billing
-  namespace: data
-  labels:
-    app: postgres-billing
-    app.kubernetes.io/name: postgres-billing
-    app.kubernetes.io/version: "18-alpine"
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres-billing
-  template:
-    metadata:
-      labels:
-        app: postgres-billing
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:18-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: POSTGRES_USER
-              value: "hotel_user"
-            - name: POSTGRES_PASSWORD
-              value: "hotel_password"
-            - name: POSTGRES_DB
-              value: "hotel_billing_db"
-          ports:
-            - containerPort: 5432
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-          volumeMounts:
-            - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d
-      volumes:
-        - name: init-scripts
-          configMap:
-            name: hotel-postgres-init
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-billing
-  namespace: data
-  labels:
-    app: postgres-billing
-spec:
-  ports:
-    - port: 5432
-      targetPort: 5432
-  selector:
-    app: postgres-billing
----
+# High-Performance Redis 8.8.1-Alpine Cache & Idempotency Store
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
   namespace: data
+  labels:
+    app: redis
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: "8.8.1-alpine"
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: redis
@@ -265,13 +349,35 @@ spec:
     metadata:
       labels:
         app: redis
+        app.kubernetes.io/name: redis
     spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
       containers:
         - name: redis
           image: redis:8.8.1-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - redis-server
+            - "--protected-mode"
+            - "no"
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
           ports:
-            - containerPort: 6379
+            - name: redis
+              containerPort: 6379
           resources:
             requests:
               cpu: 50m
@@ -279,25 +385,58 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: redis
   namespace: data
+  labels:
+    app: redis
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 6379
+    - name: redis
+      port: 6379
+      targetPort: 6379
   selector:
     app: redis
+
 ---
+# Apache Kafka 8.3.2 (KRaft Mode - No ZooKeeper)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka
   namespace: data
+  labels:
+    app: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/version: "8.3.2"
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: kafka
@@ -305,12 +444,18 @@ spec:
     metadata:
       labels:
         app: kafka
+        app.kubernetes.io/name: kafka
     spec:
       enableServiceLinks: false
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:8.3.2
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - sh
             - -c
@@ -347,8 +492,10 @@ spec:
             - name: KAFKA_COMPRESSION_TYPE
               value: "lz4"
           ports:
-            - containerPort: 9092
-            - containerPort: 9093
+            - name: client
+              containerPort: 9092
+            - name: controller
+              containerPort: 9093
           resources:
             requests:
               cpu: 200m
@@ -356,12 +503,30 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: kafka
   namespace: data
+  labels:
+    app: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
     - name: client
@@ -372,8 +537,9 @@ spec:
       targetPort: 9093
   selector:
     app: kafka
+
 ---
-# Hotel Premium Microservices in dev namespace
+# Hotel Premium Microservices in 'dev' namespace
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -381,8 +547,15 @@ metadata:
   namespace: dev
   labels:
     app: room-service
+    app.kubernetes.io/name: room-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: room-service
@@ -390,6 +563,7 @@ spec:
     metadata:
       labels:
         app: room-service
+        version: v1
         sidecar.istio.io/inject: "true"
     spec:
       enableServiceLinks: false
@@ -397,12 +571,22 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: room-service
           image: georgegxx/hotel-room-service:1.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 8081
+            - name: http
+              containerPort: 8081
           env:
             - name: PORT
               value: "8081"
@@ -410,6 +594,8 @@ spec:
               value: "8081"
             - name: DB_HOST
               value: "postgres.data.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
             - name: DB_USER
               value: "hotel_user"
             - name: DB_PASSWORD
@@ -441,23 +627,34 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8081
             initialDelaySeconds: 15
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: room-service
   namespace: dev
+  labels:
+    app: room-service
+    app.kubernetes.io/name: room-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 8081
+    - name: http
+      port: 8081
+      targetPort: 8081
   selector:
     app: room-service
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -466,8 +663,15 @@ metadata:
   namespace: dev
   labels:
     app: stay-service
+    app.kubernetes.io/name: stay-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: stay-service
@@ -475,6 +679,7 @@ spec:
     metadata:
       labels:
         app: stay-service
+        version: v1
         sidecar.istio.io/inject: "true"
     spec:
       enableServiceLinks: false
@@ -482,12 +687,22 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: stay-service
           image: georgegxx/hotel-stay-service:1.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 8082
+            - name: http
+              containerPort: 8082
           env:
             - name: PORT
               value: "8082"
@@ -495,6 +710,8 @@ spec:
               value: "8082"
             - name: DB_HOST
               value: "postgres.data.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
             - name: DB_USER
               value: "hotel_user"
             - name: DB_PASSWORD
@@ -530,23 +747,34 @@ spec:
               port: 8082
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8082
             initialDelaySeconds: 15
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: stay-service
   namespace: dev
+  labels:
+    app: stay-service
+    app.kubernetes.io/name: stay-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 8082
+    - name: http
+      port: 8082
+      targetPort: 8082
   selector:
     app: stay-service
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -555,8 +783,15 @@ metadata:
   namespace: dev
   labels:
     app: billing-service
+    app.kubernetes.io/name: billing-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: billing-service
@@ -564,6 +799,7 @@ spec:
     metadata:
       labels:
         app: billing-service
+        version: v1
         sidecar.istio.io/inject: "true"
     spec:
       enableServiceLinks: false
@@ -571,12 +807,22 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: billing-service
           image: georgegxx/hotel-billing-service:1.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 8083
+            - name: http
+              containerPort: 8083
           env:
             - name: PORT
               value: "8083"
@@ -584,6 +830,8 @@ spec:
               value: "8083"
             - name: DB_HOST
               value: "postgres.data.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
             - name: DB_USER
               value: "hotel_user"
             - name: DB_PASSWORD
@@ -615,23 +863,34 @@ spec:
               port: 8083
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8083
             initialDelaySeconds: 15
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: billing-service
   namespace: dev
+  labels:
+    app: billing-service
+    app.kubernetes.io/name: billing-service
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 8083
+    - name: http
+      port: 8083
+      targetPort: 8083
   selector:
     app: billing-service
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -640,8 +899,15 @@ metadata:
   namespace: dev
   labels:
     app: notification-worker
+    app.kubernetes.io/name: notification-worker
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: notification-worker
@@ -649,18 +915,29 @@ spec:
     metadata:
       labels:
         app: notification-worker
+        version: v1
     spec:
       enableServiceLinks: false
       serviceAccountName: hotel-worker-sa
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: notification-worker
           image: georgegxx/hotel-notification-worker:1.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 8084
+            - name: http
+              containerPort: 8084
           env:
             - name: PORT
               value: "8084"
@@ -695,29 +972,44 @@ spec:
               port: 8084
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8084
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: notification-worker
   namespace: dev
+  labels:
+    app: notification-worker
+    app.kubernetes.io/name: notification-worker
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
-    - port: 8084
+    - name: http
+      port: 8084
+      targetPort: 8084
   selector:
     app: notification-worker
+
 ---
+# Hotel Premium Frontend SPA (Nginx 1.29 Non-Root)
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hotel-frontend-config
   namespace: dev
+  labels:
+    app.kubernetes.io/name: hotel-frontend
+    app.kubernetes.io/part-of: hotel-premium
 data:
   default.conf: |
     server {
@@ -745,20 +1037,27 @@ data:
             try_files $uri $uri/ /index.html;
         }
 
+        # Reverse proxy to Kong API Gateway in dev namespace
         location /api/ {
-            resolver 10.96.0.10 kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off;
-            set $upstream_gw "http://istio-ingressgateway.istio-system.svc.cluster.local";
-            proxy_pass $upstream_gw;
+            proxy_pass http://kong-proxy.dev.svc.cluster.local:8000;
             proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
         }
 
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             expires 30d;
             add_header Cache-Control "public, no-transform";
+        }
+
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html {
+            root /usr/share/nginx/html;
         }
     }
 ---
@@ -769,8 +1068,15 @@ metadata:
   namespace: dev
   labels:
     app: hotel-frontend
+    app.kubernetes.io/name: hotel-frontend
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: hotel-frontend
@@ -778,16 +1084,26 @@ spec:
     metadata:
       labels:
         app: hotel-frontend
+        version: v1
         sidecar.istio.io/inject: "true"
     spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 10001
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
       containers:
         - name: frontend
           image: georgegxx/hotel-frontend:1.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 80
@@ -806,12 +1122,16 @@ spec:
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: nginx-conf
               mountPath: /etc/nginx/conf.d/default.conf
@@ -834,6 +1154,10 @@ kind: Service
 metadata:
   name: hotel-frontend
   namespace: dev
+  labels:
+    app: hotel-frontend
+    app.kubernetes.io/name: hotel-frontend
+    app.kubernetes.io/part-of: hotel-premium
 spec:
   ports:
     - name: http
