@@ -95,8 +95,39 @@ data:
         enabled: true
         url: "http://grafana.observability.svc.cluster.local:3000"
         in_cluster_url: "http://grafana.observability.svc.cluster.local:3000"
+      tracing:
+        enabled: true
+        provider: "tempo"
+        in_cluster_url: "http://tempo.observability.svc.cluster.local:3200"
+        url: "http://localhost:3200"
+        use_grpc: false
       istio:
         root_namespace: "istio-system"
+        component_status:
+          enabled: true
+          components:
+            - name: "istiod"
+              namespace: "istio-system"
+              is_core: true
+            - name: "istio-ingressgateway"
+              namespace: "istio-system"
+              is_core: true
+            - name: "istio-egressgateway"
+              namespace: "istio-system"
+              is_core: false
+    health_config:
+      rate:
+        - namespace: ".*"
+          tolerance:
+            - code: "5xx"
+              degraded: 0.1
+              failure: 20
+            - code: "4xx"
+              degraded: 10
+              failure: 30
+    kiali_feature_flags:
+      certificates_information_indicators:
+        enabled: true
     login_token:
       signing_key: "kiali-session-signing-key-32chars"
 ---
