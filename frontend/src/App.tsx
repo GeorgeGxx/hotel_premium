@@ -8,6 +8,7 @@ import { GuestShowcase } from './components/GuestShowcase';
 import { GuestBookingModal } from './components/GuestBookingModal';
 import { GuestComparisonModal } from './components/GuestComparisonModal';
 import { ReservationsManager } from './components/ReservationsManager';
+import { LateralNotificationToast } from './components/LateralNotificationToast';
 import {
   Room,
   RoomStatus,
@@ -17,6 +18,8 @@ import {
   StayDetails,
   CreateStayDTO,
   UpdateStayDTO,
+  AppNotification,
+  NotificationCategory,
 } from './types/hotel';
 import {
   fetchRooms,
@@ -29,7 +32,7 @@ import {
   updateRoomPrice,
   subscribeToLiveEvents,
 } from './services/api';
-import { CheckCircle2, DollarSign, ExternalLink, ShieldCheck } from 'lucide-react';
+import { DollarSign, ExternalLink, ShieldCheck } from 'lucide-react';
 
 const ADMIN_USER: CurrentUser = {
   username: 'admin_user',
@@ -45,6 +48,33 @@ const BASIC_USER: CurrentUser = {
   email: 'reception@hotelpremium.com',
 };
 
+const INITIAL_NOTIFICATIONS: AppNotification[] = [
+  {
+    id: 'notif-system-1',
+    title: 'Zero-Balance Departure Policy Active',
+    message: 'Folio settlement enforcement active for all departures and partial payments.',
+    category: 'FOLIO',
+    timestamp: new Date(Date.now() - 4 * 60000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'notif-system-2',
+    title: 'Housekeeping SLA Turnover Active',
+    message: '45-minute turnover threshold configured with automatic SLA breach detection.',
+    category: 'HOUSEKEEPING',
+    timestamp: new Date(Date.now() - 12 * 60000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'notif-system-3',
+    title: 'PostgreSQL 18 Cluster Synchronized',
+    message: 'All 6 Luxury Suites (101, 102, 201, 202, 301, 302) live and operational.',
+    category: 'SYSTEM',
+    timestamp: new Date(Date.now() - 25 * 60000).toISOString(),
+    read: true,
+  },
+];
+
 export const App: React.FC = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [stays, setStays] = useState<StayDetails[]>([]);
@@ -53,9 +83,33 @@ export const App: React.FC = () => {
   const [selectedRoomForCheckIn, setSelectedRoomForCheckIn] = useState<Room | null>(null);
   const [guestBookingRoom, setGuestBookingRoom] = useState<Room | null>(null);
   const [comparingRooms, setComparingRooms] = useState<Room[] | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser>(BASIC_USER);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
+  const [activeToastNotification, setActiveToastNotification] = useState<AppNotification | null>(null);
+
+  const addNotification = useCallback(
+    (title: string, message: string, category: NotificationCategory = 'SYSTEM') => {
+      const newNotif: AppNotification = {
+        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        message,
+        category,
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+      setNotifications((prev) => [newNotif, ...prev]);
+      setActiveToastNotification(newNotif);
+    },
+    []
+  );
+
+  const showToast = useCallback(
+    (msg: string, title = 'Operational Update', category: NotificationCategory = 'SYSTEM') => {
+      addNotification(title, msg, category);
+    },
+    [addNotification]
+  );
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -83,8 +137,33 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Real-Time Background Synchronization (Silent, live polling every 4s)
   useEffect(() => {
     loadData();
+
+    const silentSync = async () => {
+      try {
+        const [roomsData, staysData] = await Promise.all([
+          fetchRooms(),
+          fetchStays(),
+        ]);
+        const reconciledRooms = roomsData.map((room) => {
+          const hasActiveStay = staysData.some(
+            (s) => (s.room_id === room.id || s.room_number === room.number) && s.status === 'ACTIVE'
+          );
+          if (hasActiveStay && room.status === 'AVAILABLE') {
+            return { ...room, status: 'OCCUPIED' as RoomStatus };
+          }
+          return room;
+        });
+        setRooms(reconciledRooms);
+        setStays(staysData);
+      } catch {
+        // Silent catch during background sync
+      }
+    };
+
+    const interval = setInterval(silentSync, 4000);
 
     // Real-Time Server-Sent Events (SSE) listener
     const unsubscribe = subscribeToLiveEvents((eventType, data) => {
@@ -92,32 +171,54 @@ export const App: React.FC = () => {
         setRooms((prev) =>
           prev.map((r) => (r.id === data.room_id ? { ...r, status: data.status } : r))
         );
-        showToast(`Real-time update: Room status synchronized (${data.status})`);
+        addNotification(
+          'Room Status Synchronized',
+          `Suite status transitioned to ${data.status} via real-time stream`,
+          'HOUSEKEEPING'
+        );
       } else if (eventType === 'stay_created' && data?.id) {
         setStays((prev) => [data, ...prev.filter((s) => s.id !== data.id)]);
-        showToast(`Real-time update: VIP reservation confirmed for ${data.guest_name}`);
+        addNotification(
+          'New VIP Reservation Stream',
+          `Reservation confirmed for ${data.guest_name}`,
+          'RESERVATION'
+        );
       }
     });
 
     return () => {
+      clearInterval(interval);
       unsubscribe();
     };
-  }, [loadData]);
+  }, [loadData, addNotification]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4500);
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const handleClearNotifications = () => {
+    setNotifications([]);
+  };
+
+  const handleDismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const handleToggleRole = () => {
     if (currentUser.role === 'ADMIN') {
       setCurrentUser(BASIC_USER);
-      showToast('Switched to basic_user role (Front Desk & Reservations mode)');
+      addNotification(
+        'Role Switched',
+        'Switched to basic_user role (Front Desk & Reservations mode)',
+        'SYSTEM'
+      );
     } else {
       setCurrentUser(ADMIN_USER);
-      showToast('Switched to admin_user role (Full Management Access)');
+      addNotification(
+        'Role Switched',
+        'Switched to admin_user role (Full Management Access)',
+        'SYSTEM'
+      );
     }
   };
 
@@ -126,7 +227,11 @@ export const App: React.FC = () => {
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, base_price: newPrice } : r))
     );
-    showToast(`Base rate updated to $${newPrice.toFixed(2)} USD!`);
+    addNotification(
+      'Rate Configured',
+      `Base rate updated to $${newPrice.toFixed(2)} USD!`,
+      'SYSTEM'
+    );
   };
 
   // Check-In from staff modal
@@ -157,7 +262,12 @@ export const App: React.FC = () => {
     );
 
     setSelectedRoomForCheckIn(null);
-    showToast(`Successfully checked in ${formData.guestName} to Suite!`);
+    const room = rooms.find((r) => r.id === formData.roomId);
+    addNotification(
+      'Guest Check-In Confirmed',
+      `Suite ${room?.number || ''}: ${formData.guestName} checked in (${formData.nights} nights).`,
+      'CHECK_IN'
+    );
   };
 
   // Guest luxury booking portal confirmation
@@ -183,10 +293,12 @@ export const App: React.FC = () => {
     });
 
     setStays((prev) => [created, ...prev]);
-    showToast(
-      `VIP Reservation Confirmed for ${req.guestName}! (${
+    addNotification(
+      'VIP Booking Confirmed',
+      `Suite guaranteed for ${req.guestName} (${
         depositAmount < req.grandTotalUSD ? 'Partial Guarantee Deposit' : 'Fully Paid'
-      })`
+      }).`,
+      'RESERVATION'
     );
   };
 
@@ -224,7 +336,11 @@ export const App: React.FC = () => {
     setRooms((prev) =>
       prev.map((r) => (r.id === room.id ? { ...r, status: 'DIRTY' } : r))
     );
-    showToast(`Room ${room.number} checked out and marked DIRTY for housekeeping.`);
+    addNotification(
+      'Guest Departure & Check-Out',
+      `Suite ${room.number} checked out and marked DIRTY for housekeeping turnover.`,
+      'CHECK_OUT'
+    );
   };
 
   // Mark room as cleaned
@@ -233,7 +349,11 @@ export const App: React.FC = () => {
     setRooms((prev) =>
       prev.map((r) => (r.id === room.id ? { ...r, status: 'AVAILABLE' } : r))
     );
-    showToast(`Room ${room.number} cleaned and ready for guests.`);
+    addNotification(
+      'Suite Turnover Complete',
+      `Suite ${room.number} sanitized and ready for guest check-in.`,
+      'HOUSEKEEPING'
+    );
   };
 
   // Arbitrary Operational Room Status Override (Maintenance, Cleaning, Blocked, etc.)
@@ -255,8 +375,10 @@ export const App: React.FC = () => {
           : r
       )
     );
-    showToast(
-      `Room ${room.number} transitioned to ${newStatus}${reason ? `: ${reason}` : ''}`
+    addNotification(
+      'Room Operational Status',
+      `Suite ${room.number} transitioned to ${newStatus}${reason ? `: ${reason}` : ''}.`,
+      'HOUSEKEEPING'
     );
   };
 
@@ -275,11 +397,21 @@ export const App: React.FC = () => {
         );
       }
     }
+    addNotification(
+      'Reservation Created',
+      `Reservation for ${dto.guest_name} booked successfully.`,
+      'RESERVATION'
+    );
   };
 
   const handleUpdateStayFromManager = async (id: string, dto: UpdateStayDTO) => {
     const updated = await updateStay(id, dto);
     setStays((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    addNotification(
+      'Reservation Updated',
+      `Reservation details updated successfully.`,
+      'RESERVATION'
+    );
   };
 
   const handleCancelStayFromManager = async (id: string) => {
@@ -298,6 +430,11 @@ export const App: React.FC = () => {
     }
     setStays((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status: 'CANCELLED' } : s))
+    );
+    addNotification(
+      'Reservation Cancelled',
+      `Reservation for ${target?.guest_name || id} cancelled and room released.`,
+      'RESERVATION'
     );
   };
 
@@ -333,10 +470,20 @@ export const App: React.FC = () => {
           : s
       )
     );
+    addNotification(
+      'Folio Settled & Departed',
+      `Stay for ${target?.guest_name || id} settled to $0.00 balance and checked out.`,
+      'FOLIO'
+    );
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative antialiased selection:bg-amber-500/30 selection:text-amber-200">
+      {/* Top Subtle Luxury Sync Progress Bar */}
+      {isLoading && (
+        <div className="fixed top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-500 via-amber-300 to-amber-600 animate-pulse z-50 pointer-events-none" />
+      )}
+
       {/* Ambient Glow Effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl"></div>
@@ -345,8 +492,10 @@ export const App: React.FC = () => {
       </div>
 
       <Navbar
-        onRefresh={loadData}
-        isLoading={isLoading}
+        notifications={notifications}
+        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+        onClearNotifications={handleClearNotifications}
+        onDismissNotification={handleDismissNotification}
         currentUser={currentUser}
         onToggleRole={handleToggleRole}
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
@@ -354,13 +503,11 @@ export const App: React.FC = () => {
         onViewChange={(view) => setActiveView(view)}
       />
 
-      {/* Toast Alert Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center space-x-2 text-xs border border-amber-500/30 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      {/* Floating Lateral Notification Toast (Top-Right High-Contrast Slide-In) */}
+      <LateralNotificationToast
+        notification={activeToastNotification}
+        onDismiss={() => setActiveToastNotification(null)}
+      />
 
       {/* Main Workspace Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

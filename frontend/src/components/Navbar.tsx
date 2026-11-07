@@ -1,19 +1,21 @@
 import React from 'react';
 import {
   UserCircle,
-  RefreshCw,
   Settings,
   Sparkles,
   LayoutGrid,
   Calendar,
 } from 'lucide-react';
-import { CurrentUser } from '../types/hotel';
+import { CurrentUser, AppNotification } from '../types/hotel';
+import { NotificationCenter } from './NotificationCenter';
 
 export type ActiveAppView = 'STAFF_PMS' | 'GUEST_PORTAL' | 'RESERVATIONS';
 
 interface NavbarProps {
-  onRefresh: () => void;
-  isLoading: boolean;
+  notifications: AppNotification[];
+  onMarkAllNotificationsRead: () => void;
+  onClearNotifications: () => void;
+  onDismissNotification: (id: string) => void;
   currentUser: CurrentUser;
   onToggleRole: () => void;
   onOpenAdminPanel: () => void;
@@ -22,8 +24,10 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  onRefresh,
-  isLoading,
+  notifications,
+  onMarkAllNotificationsRead,
+  onClearNotifications,
+  onDismissNotification,
   currentUser,
   onToggleRole,
   onOpenAdminPanel,
@@ -92,17 +96,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Action Controls */}
         <div className="flex items-center space-x-2">
-          {/* Refresh button */}
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center px-3 py-1.5 border border-slate-700/80 shadow-xs text-xs font-semibold rounded-lg text-slate-200 bg-slate-800/70 hover:bg-slate-800 hover:text-white transition-all disabled:opacity-50"
-            title="Refresh Room Matrix & Stays"
+          {/* Real-time Live Status Pulse */}
+          <div
+            className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/60 border border-slate-800 text-[10px] text-slate-400 font-semibold select-none"
+            title="Real-time live synchronization active"
           >
-            <RefreshCw className={`w-3.5 h-3.5 sm:mr-1.5 ${isLoading ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-emerald-400 font-bold">Live</span>
+          </div>
+
+          {/* Operational Notification Center */}
+          <NotificationCenter
+            notifications={notifications}
+            onMarkAllAsRead={onMarkAllNotificationsRead}
+            onClearAll={onClearNotifications}
+            onDismissNotification={onDismissNotification}
+          />
 
           {/* Admin Panel button (Only for ADMIN role) */}
           {currentUser.role === 'ADMIN' ? (

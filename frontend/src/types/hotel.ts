@@ -142,3 +142,20 @@ export interface CurrentUser {
   role: UserRole;
   email: string;
 }
+
+export type NotificationCategory =
+  | 'RESERVATION'
+  | 'CHECK_IN'
+  | 'CHECK_OUT'
+  | 'HOUSEKEEPING'
+  | 'FOLIO'
+  | 'SYSTEM';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  timestamp: string;
+  read: boolean;
+}

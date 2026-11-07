@@ -38,43 +38,51 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between text-white">
-          <div className="flex items-center space-x-2">
-            <UserPlus className="w-5 h-5" />
-            <h3 className="text-base font-semibold">
-              Guest Check-In &bull; Room {room.number}
-            </h3>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-slate-900 rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-800 animate-in fade-in zoom-in-95 duration-150 text-slate-100">
+        {/* Luxury Header */}
+        <div className="bg-slate-950 px-6 py-4 flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <UserPlus className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-serif-luxury font-bold text-white text-lg">
+                Guest Check-In &bull; Suite {room.number}
+              </h3>
+              <p className="text-xs text-slate-400">Front desk instant registration &amp; key issuance</p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+            className="text-slate-400 hover:text-white hover:bg-slate-800 p-2 rounded-xl transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+          {/* Room Specs Header */}
+          <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex justify-between items-center text-xs">
             <div>
               <span className="text-slate-500 font-medium">Category: </span>
-              <span className="font-semibold text-slate-800">{room.category_name}</span>
+              <span className="font-semibold text-white">{room.category_name}</span>
             </div>
             <div>
               <span className="text-slate-500 font-medium">Max Capacity: </span>
-              <span className="font-semibold text-slate-800">{room.capacity} Guests</span>
+              <span className="font-semibold text-white">{room.capacity} Guests</span>
             </div>
             <div>
               <span className="text-slate-500 font-medium">Base Rate: </span>
-              <span className="font-semibold text-indigo-600">${room.base_price.toFixed(2)}/nt</span>
+              <span className="font-bold text-amber-400">${room.base_price.toFixed(2)} USD/nt</span>
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3.5">
+            {/* Full Name */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                 Guest Full Name *
               </label>
               <div className="relative">
@@ -82,17 +90,18 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. John Doe"
+                  placeholder="e.g. Lady Vivienne Westwood"
                   value={formData.guestName}
                   onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
             </div>
 
+            {/* Document Type & Number */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Document Type *
                 </label>
                 <select
@@ -103,16 +112,16 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                       documentType: e.target.value as CheckInFormData['documentType'],
                     })
                   }
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600 bg-white"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500 transition-colors"
                 >
-                  <option value="PASSPORT">Passport</option>
-                  <option value="NATIONAL_ID">National ID / DNI / INE</option>
-                  <option value="DRIVERS_LICENSE">Driver's License</option>
+                  <option value="PASSPORT" className="bg-slate-900 text-white">Passport</option>
+                  <option value="NATIONAL_ID" className="bg-slate-900 text-white">National ID / DNI / INE</option>
+                  <option value="DRIVERS_LICENSE" className="bg-slate-900 text-white">Driver's License</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Document Number *
                 </label>
                 <div className="relative">
@@ -120,18 +129,19 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. A12345678"
+                    placeholder="e.g. P12345678"
                     value={formData.documentNumber}
                     onChange={(e) => setFormData({ ...formData, documentNumber: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white font-mono placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
               </div>
             </div>
 
+            {/* Phone & Email */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Phone Contact
                 </label>
                 <div className="relative">
@@ -141,13 +151,13 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                     placeholder="+1 555 0192"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Email Address
                 </label>
                 <div className="relative">
@@ -157,15 +167,16 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                     placeholder="guest@domain.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
               </div>
             </div>
 
+            {/* Stay Nights, Rate, and Deposit */}
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Stay Nights *
                 </label>
                 <div className="relative">
@@ -184,14 +195,14 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                         deposit: nights * formData.nightlyRate,
                       });
                     }}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Rate/Night ($) *
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Rate/Night (USD) *
                 </label>
                 <input
                   type="number"
@@ -207,13 +218,13 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                       deposit: formData.nights * nightlyRate,
                     });
                   }}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Initial Deposit ($)
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Initial Deposit (USD)
                 </label>
                 <div className="relative">
                   <CreditCard className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -228,28 +239,29 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
                         deposit: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-indigo-600 focus:border-indigo-600 font-semibold text-indigo-700"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-amber-400 font-bold focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
-                <div className="flex gap-1.5 mt-1">
+                {/* Deposit Presets */}
+                <div className="flex gap-1.5 mt-1.5">
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, deposit: total })}
-                    className="text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                    className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-2 py-0.5 rounded transition-colors"
                   >
                     100% Full
                   </button>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, deposit: Math.round((total / 2) * 100) / 100 })}
-                    className="text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                    className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-2 py-0.5 rounded transition-colors"
                   >
                     50% Dep.
                   </button>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, deposit: 0 })}
-                    className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                    className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 font-medium px-2 py-0.5 rounded transition-colors"
                   >
                     $0 Hold
                   </button>
@@ -257,41 +269,44 @@ export const QuickCheckInModal: React.FC<QuickCheckInModalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 flex justify-between items-center text-xs">
+            {/* Total and Balance Calculation */}
+            <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 flex justify-between items-center text-xs">
               <div>
-                <span className="text-slate-500 font-medium">Calculated Total: </span>
-                <span className="text-base font-bold text-slate-900">${total.toFixed(2)}</span>
+                <span className="text-slate-400 text-[11px]">Calculated Stay Total: </span>
+                <div className="text-base font-bold text-white">${total.toFixed(2)} USD</div>
               </div>
               <div className="text-right">
-                <span className="text-slate-500 font-medium">Balance Due: </span>
-                <span className="text-sm font-semibold text-slate-700">
-                  ${Math.max(0, total - formData.deposit).toFixed(2)}
-                </span>
-                <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                  formData.deposit >= total
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {formData.deposit >= total ? 'PAID' : 'PARTIAL'}
-                </span>
+                <span className="text-slate-400 text-[11px]">Departure Balance Due: </span>
+                <div className="text-base font-bold text-amber-400">
+                  ${Math.max(0, total - formData.deposit).toFixed(2)} USD
+                </div>
+                <div className="mt-0.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    formData.deposit >= total
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {formData.deposit >= total ? 'Folio: PAID (Zero Balance)' : 'Folio: PARTIAL (Settlement at Check-Out)'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="pt-2 flex justify-end space-x-3">
+          <div className="pt-2 flex justify-end space-x-3 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl border border-slate-800 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors flex items-center space-x-1.5"
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-1.5"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Confirm & Check In</span>
+              <span>Confirm &amp; Check In</span>
             </button>
           </div>
         </form>
