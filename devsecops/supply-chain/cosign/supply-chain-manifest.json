@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "1.0.0",
+  "platform": "hotel-premium",
+  "attestationType": "https://slsa.dev/provenance/v1",
+  "signingSpec": {
+    "tool": "sigstore-cosign",
+    "version": "v3.1.3",
+    "algorithm": "ecdsa-sha2-256-nistp256",
+    "publicKeyPath": "devsecops/supply-chain/cosign/cosign.pub",
+    "transparencyLog": "https://rekor.sigstore.dev"
+  },
+  "trustedRegistries": [
+    "georgegxx/",
+    "docker.io/georgegxx/",
+    "ghcr.io/opencost/",
+    "quay.io/keycloak/",
+    "grafana/",
+    "prom/",
+    "confluentinc/",
+    "hashicorp/",
+    "kong",
+    "postgres",
+    "redis",
+    "prometheuscommunity/",
+    "oliver006/",
+    "danielqsj/",
+    "istio/"
+  ],
+  "components": [
+    {
+      "name": "room-service",
+      "runtime": "alpine:3.21",
+      "image": "georgegxx/hotel-room-service:1.0.0"
+    },
+    {
+      "name": "stay-service",
+      "runtime": "alpine:3.21",
+      "image": "georgegxx/hotel-stay-service:1.0.0"
+    },
+    {
+      "name": "billing-service",
+      "runtime": "alpine:3.21",
+      "image": "georgegxx/hotel-billing-service:1.0.0"
+    },
+    {
+      "name": "notification-worker",
+      "runtime": "alpine:3.21",
+      "image": "georgegxx/hotel-notification-worker:1.0.0"
+    },
+    {
+      "name": "hotel-frontend",
+      "runtime": "nginx:1.28-alpine",
+      "image": "georgegxx/hotel-frontend:1.0.0"
+    }
+  ]
+}

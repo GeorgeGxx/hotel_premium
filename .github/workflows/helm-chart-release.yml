@@ -1,0 +1,67 @@
+name: "Helm Chart Release & Policy Gate"
+
+on:
+  push:
+    branches:
+      - develop
+      - staging
+      - prod
+    paths:
+      - "k8s/helm/**"
+      - "devsecops/policies/**"
+  pull_request:
+    branches:
+      - develop
+      - staging
+      - prod
+    paths:
+      - "k8s/helm/**"
+      - "devsecops/policies/**"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint-and-validate:
+    name: "Helm Lint & OPA Policy Verification"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Helm 4.3.1
+        uses: azure/setup-helm@v4
+        with:
+          version: "v4.3.1"
+
+      - name: Setup Conftest 0.71.1
+        run: |
+          CONFTEST_VERSION="0.71.1"
+          curl -sLo /tmp/conftest.tar.gz "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/conftest.tar.gz -C /usr/local/bin conftest
+          chmod +x /usr/local/bin/conftest
+          conftest --version
+
+      - name: Lint Hotel Premium Helm Chart
+        run: |
+          echo "Linting Hotel Premium Helm Chart..."
+          helm lint k8s/helm/hotel-premium
+
+      - name: Evaluate OPA Rego Policies with Conftest
+        run: |
+          echo "Templating chart and evaluating OPA policies..."
+          helm template hotel-premium k8s/helm/hotel-premium | conftest test - --policy devsecops/policies/conftest
+
+      - name: Package Helm Chart Artifact
+        run: |
+          mkdir -p dist
+          helm package k8s/helm/hotel-premium --destination dist/
+          ls -lah dist/
+
+      - name: Archive Helm Release Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotel-premium-helm-package
+          path: dist/*.tgz
+          retention-days: 7

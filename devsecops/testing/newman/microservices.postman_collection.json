@@ -1,0 +1,109 @@
+{
+  "info": {
+    "_postman_id": "hotel-premium-pms-collection-2026",
+    "name": "Hotel Premium PMS — Enterprise API & Gateway Verification Suite",
+    "description": "End-to-end API contract verification for Hotel Premium microservices (room-service, stay-service, billing-service, notification-worker) via Kong Gateway v3.9.4.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health & Readiness Checks",
+      "item": [
+        {
+          "name": "GET /api/v1/health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Room Inventory & Rack Management",
+      "item": [
+        {
+          "name": "GET /api/v1/rooms",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rooms"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Reservations, Stays & Saga Orchestration",
+      "item": [
+        {
+          "name": "GET /api/v1/stays",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stays",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "stays"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Billing, Folios & POS Catalog",
+      "item": [
+        {
+          "name": "GET /api/v1/billing/products",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "products"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Notifications Worker Status",
+      "item": [
+        {
+          "name": "GET /api/v1/notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "notifications"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

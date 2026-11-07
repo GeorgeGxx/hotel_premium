@@ -1,0 +1,32 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTrustedRegistries
+metadata:
+  name: enforce-trusted-registry
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces:
+      - "dev"
+      - "staging"
+      - "prod"
+  parameters:
+    registries:
+      - "georgegxx/"
+      - "docker.io"
+      - "kong:"
+      - "postgres:"
+      - "redis:"
+      - "confluentinc/"
+      - "prometheuscommunity/"
+      - "oliver006/"
+      - "danielqsj/"
+      - "istio/"
+      - "quay.io/"
+      - "localhost"
+      - "10.0."
+      - "192.168."
+      - "gcr.io/distroless"
+      - "ghcr.io/"
+      - "public.ecr.aws"

@@ -1,0 +1,16 @@
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: image-signature-policy
+spec:
+  authorities:
+    - key:
+        data: |
+          -----BEGIN PUBLIC KEY-----
+          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUq1nLGe8BDYflDDuuw1Qaar3bbT6
+          ChZiYhXBRvLtIoLWAgb0fnGPztTzF/7aFRUAN69RJdpUysXXoSYd5eJGRQ==
+          -----END PUBLIC KEY-----
+  images:
+    - glob: "georgegxx/hotel-**"
+    - glob: "ghcr.io/jorge/hotel-premium/**"
+    - glob: "123456789012.dkr.ecr.us-east-1.amazonaws.com/hotel-premium/**"

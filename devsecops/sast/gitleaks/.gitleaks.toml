@@ -1,0 +1,30 @@
+# Gitleaks v8.30.1 Configuration for Hotel Premium
+title = "Hotel Premium Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for testing fixtures, mock credentials, local env, and scripts"
+paths = [
+    '''\.env(\.example)?$''',
+    '''platform-minikube\.ps1$''',
+    '''backend/internal/application/saga/.*_test\.go''',
+    '''backend/internal/infrastructure/.*_test\.go''',
+    '''frontend/tests/.*''',
+    '''devsecops/.*'''
+]
+regexes = [
+    '''mock-token-.*''',
+    '''test-secret-key-.*''',
+    '''hotel-premium-enterprise-secure-jwt-token-key-2026''',
+    '''r0MSAq3nMFX1QPhJFwuem1wrQPrtdZ2d4OzM7PznriGMx5xcQSPmCiAsPy00ILNB5QbdMd3JgwSX752LkbLBpT''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\..*'''
+]
+
+[[rules]]
+id = "generic-api-key-custom"
+description = "Detected custom API key pattern"
+regex = '''(?i)(api[_-]?key|jwt[_-]?secret|auth[_-]?token)["']?\s*(:=|=|:)\s*["']([0-9a-zA-Z\-_]{32,})["']'''
+secretGroup = 3
+keywords = ["api_key", "jwt_secret", "auth_token"]

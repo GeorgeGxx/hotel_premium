@@ -1,0 +1,56 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredResources
+metadata:
+  name: enforce-pod-resource-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - "dev"
+      - "auth"
+      - "data"
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTrustedRegistries
+metadata:
+  name: enforce-trusted-registries
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - "dev"
+      - "auth"
+      - "data"
+  parameters:
+    registries:
+      - "georgegxx/"
+      - "docker.io"
+      - "kong:"
+      - "postgres:"
+      - "redis:"
+      - "confluentinc/"
+      - "prometheuscommunity/"
+      - "oliver006/"
+      - "danielqsj/"
+      - "istio/"
+      - "registry.k8s.io"
+      - "ghcr.io"
+      - "quay.io"
+      - "public.ecr.aws"
+      - "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowRoot
+metadata:
+  name: enforce-disallow-root
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - "dev"

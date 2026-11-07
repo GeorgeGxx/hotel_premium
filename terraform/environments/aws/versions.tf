@@ -1,0 +1,36 @@
+terraform {
+  required_version = ">= 1.10.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.80.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0.0"
+    }
+  }
+
+  # Production remote state backend (uncomment or pass -backend-config in CI/CD):
+  # backend "s3" {
+  #   bucket       = "hotel-premium-terraform-state"
+  #   key          = "eks/terraform.tfstate"
+  #   region       = "us-east-1"
+  #   encrypt      = true
+  #   use_lockfile = true
+  # }
+}
+
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+      Domain      = "Hospitality-PMS"
+    }
+  }
+}

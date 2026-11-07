@@ -1,0 +1,163 @@
+name: DevSecOps CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+      - prod
+  pull_request:
+    branches:
+      - main
+      - develop
+      - staging
+      - prod
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sast-gitleaks:
+    name: SAST Secret Detection (Gitleaks 8.30.1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks v8.30.1
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: devsecops/sast/gitleaks/.gitleaks.toml
+
+  iac-tflint:
+    name: Terraform Format & TFLint (0.64.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Check Terraform Formatting
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Setup TFLint v0.64.0
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: "v0.64.0"
+
+      - name: Init and Run TFLint (Blocking)
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/devsecops/iac/tflint/.tflint.hcl"
+          tflint --chdir=terraform/environments/local-minikube --config "$GITHUB_WORKSPACE/devsecops/iac/tflint/.tflint.hcl"
+          tflint --chdir=terraform/environments/aws --config "$GITHUB_WORKSPACE/devsecops/iac/tflint/.tflint.hcl"
+
+  policy-conftest-opa:
+    name: Helm Lint & OPA Policy Compliance (Conftest 0.71.1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Helm 4.3.1
+        uses: azure/setup-helm@v4
+        with:
+          version: "v4.3.1"
+
+      - name: Lint Helm Chart across All Environments
+        run: |
+          helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-dev.yaml
+          helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-staging.yaml
+          helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-prod.yaml
+
+      - name: Install Conftest 0.71.1
+        run: |
+          CONFTEST_VERSION="0.71.1"
+          curl -sLO "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar -xzf "conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Validate Kubernetes Manifests & Helm Templates (Blocking)
+        run: |
+          conftest test k8s/minikube/services/*.yaml --policy devsecops/policies/conftest/
+          helm template hotel-premium k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-prod.yaml > rendered-prod.yaml
+          conftest test rendered-prod.yaml --policy devsecops/policies/conftest/
+
+  trivy-and-sbom:
+    name: Vulnerability Scan & CycloneDX SBOM (Trivy 0.76.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability & Misconfig Scanner (Blocking)
+        uses: aquasecurity/trivy-action@v0.29.0
+        with:
+          scan-type: "fs"
+          ignore-unfixed: true
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+      - name: Generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@v0.29.0
+        with:
+          scan-type: "fs"
+          format: "cyclonedx"
+          output: "sbom-hotel-premium.cdx.json"
+
+      - name: Upload CycloneDX SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotel-premium-cyclonedx-sbom
+          path: sbom-hotel-premium.cdx.json
+          retention-days: 30
+
+  backend-tests:
+    name: Backend Unit, RBAC & Saga Orchestrator Tests (Go 1.26)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend/go.sum
+
+      - name: Run Go Vet & Race-Enabled Tests
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test -v -race ./...
+
+  frontend-tests:
+    name: Frontend Type Check, Vitest & Build (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies, test and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build

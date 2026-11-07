@@ -1,0 +1,106 @@
+name: AWS Cloud Deployment CD Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - staging
+      - prod
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+jobs:
+  deploy-aws:
+    name: Build, Sign by Digest, Verify and Deploy to AWS EKS
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'prod' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
+    env:
+      AWS_REGION: us-east-1
+      ENV_SHORT: ${{ github.ref_name == 'prod' && 'prod' || github.ref_name == 'staging' && 'staging' || 'dev' }}
+      EKS_CLUSTER_NAME: hotel-premium-${{ github.ref_name == 'prod' && 'prod' || github.ref_name == 'staging' && 'staging' || 'dev' }}-eks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install Cosign v3.1.3
+        uses: sigstore/cosign-installer@v3.8.1
+        with:
+          cosign-release: "v3.1.3"
+
+      - name: Setup Helm 4.3.1
+        uses: azure/setup-helm@v4
+        with:
+          version: "v4.3.1"
+
+      - name: Build, Scan, Push & Sign Backend Microservices with Cosign
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: "1.0.0-${{ github.sha }}"
+        run: |
+          for SVC in room-service stay-service billing-service notification-worker; do
+            IMAGE_URI="${REGISTRY}/hotel-${SVC}:${IMAGE_TAG}"
+            docker build --build-arg SERVICE="${SVC}" -t "${IMAGE_URI}" ./backend
+            docker push "${IMAGE_URI}"
+            DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_URI}")
+            cosign sign --yes "${DIGEST}"
+            cosign verify \
+              --certificate-identity-regexp="https://github.com/${GITHUB_REPOSITORY}/.*" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${DIGEST}"
+          done
+
+      - name: Build, Scan, Push & Sign Frontend Image with Cosign
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: "1.0.0-${{ github.sha }}"
+        run: |
+          IMAGE_URI="${REGISTRY}/hotel-frontend:${IMAGE_TAG}"
+          docker build --build-arg VITE_API_BASE_URL="/api/v1" -t "${IMAGE_URI}" ./frontend
+          docker push "${IMAGE_URI}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_URI}")
+          cosign sign --yes "${DIGEST}"
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/${GITHUB_REPOSITORY}/.*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${DIGEST}"
+
+      - name: Update Kubeconfig for Amazon EKS
+        run: |
+          aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
+
+      - name: Deploy Hotel Premium via Helm with Atomic Rollback Protection
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: "1.0.0-${{ github.sha }}"
+        run: |
+          NAMESPACE="hotel-${ENV_SHORT}"
+          if [ "${ENV_SHORT}" = "dev" ]; then
+            NAMESPACE="dev"
+          fi
+          helm upgrade --install hotel-premium k8s/helm/hotel-premium \
+            --namespace "${NAMESPACE}" \
+            --create-namespace \
+            -f "k8s/helm/hotel-premium/values-${ENV_SHORT}.yaml" \
+            --set services.roomService.image="${REGISTRY}/hotel-room-service:${IMAGE_TAG}" \
+            --set services.stayService.image="${REGISTRY}/hotel-stay-service:${IMAGE_TAG}" \
+            --set services.billingService.image="${REGISTRY}/hotel-billing-service:${IMAGE_TAG}" \
+            --set services.notificationWorker.image="${REGISTRY}/hotel-notification-worker:${IMAGE_TAG}" \
+            --set services.hotelFrontend.image="${REGISTRY}/hotel-frontend:${IMAGE_TAG}" \
+            --server-side=true \
+            --force-conflicts \
+            --rollback-on-failure \
+            --wait=watcher \
+            --timeout 5m
