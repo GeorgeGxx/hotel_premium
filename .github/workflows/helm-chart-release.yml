@@ -3,16 +3,12 @@ name: "Helm Chart Release & Policy Gate"
 on:
   push:
     branches:
-      - develop
-      - staging
       - master
     paths:
       - "k8s/helm/**"
       - "devsecops/policies/**"
   pull_request:
     branches:
-      - develop
-      - staging
       - master
     paths:
       - "k8s/helm/**"

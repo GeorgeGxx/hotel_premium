@@ -3,13 +3,9 @@ name: DevSecOps CI Pipeline
 on:
   push:
     branches:
-      - develop
-      - staging
       - master
   pull_request:
     branches:
-      - develop
-      - staging
       - master
 
 permissions:

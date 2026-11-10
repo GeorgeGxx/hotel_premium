@@ -3,8 +3,6 @@ name: AWS Cloud Deployment CD Pipeline
 on:
   push:
     branches:
-      - develop
-      - staging
       - master
 
 permissions:
@@ -16,11 +14,11 @@ jobs:
   deploy-aws:
     name: Build, Sign by Digest, Verify and Deploy to AWS EKS
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'master' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
+    environment: production
     env:
       AWS_REGION: us-east-1
-      ENV_SHORT: ${{ github.ref_name == 'master' && 'prod' || github.ref_name == 'staging' && 'staging' || 'dev' }}
-      EKS_CLUSTER_NAME: hotel-premium-${{ github.ref_name == 'master' && 'prod' || github.ref_name == 'staging' && 'staging' || 'dev' }}-eks
+      ENV_SHORT: prod
+      EKS_CLUSTER_NAME: hotel-premium-prod-eks
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
