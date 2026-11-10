@@ -16,30 +16,31 @@ This guide details how to deploy **Hotel Premium** on **Red Hat OpenShift Contai
 
 ---
 
-## 2. One-Click Deployment via Helm 4
+## 2. One-Click Automated Deployment
 
 ### Prerequisites
 - OpenShift CLI (`oc`) authenticated to the cluster (`oc login`).
 - Helm 4.3+ CLI installed.
+- Python 3.9+ or Bash.
 
 ### Execution
 
+Execute the unified deployment script (available in Bash or cross-platform Python):
+
 ```bash
-# 1. Clone & Navigate
-cd hotel_premium
+# Linux / macOS / Bash:
+bash k8s/openshift/install-openshift.sh
 
-# 2. Assign SCC for Stateful Data Layer (Postgres, Kafka, Redis)
-oc apply -f k8s/openshift/scc-bindings.yaml
-
-# 3. Deploy Application Microservices via Helm with OpenShift values
-helm upgrade --install hotel-premium ./k8s/helm/hotel-premium \
-  --namespace hotel-premium \
-  --create-namespace \
-  -f ./k8s/helm/hotel-premium/values-openshift.yaml
-
-# 4. Verify Route and Service Endpoints
-oc get routes -n hotel-premium
+# Cross-Platform Python (Windows / Linux / macOS):
+python k8s/openshift/install-openshift.py
 ```
+
+The automated script coordinates the entire workflow end-to-end:
+1. **Cluster Verification**: Verifies active session via `oc whoami`.
+2. **Project Provisioning**: Creates `hotel-premium`, `data`, and `auth` projects if not present.
+3. **SCC Permissions**: Binds the `anyuid` SCC to stateful infrastructure service accounts (`hotel-data-sa`).
+4. **Helm 4 Rollout**: Deploys the microservices under OpenShift's unprivileged `restricted-v2` SCC with `values-openshift.yaml`.
+5. **Route Exposure**: Provisions Edge TLS routes and prints the live HTTPS endpoint.
 
 ---
 
