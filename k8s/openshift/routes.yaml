@@ -1,0 +1,46 @@
+# ==============================================================================
+# Red Hat OpenShift HAProxy Edge Routes
+# External Ingress for Hotel Premium Frontend and Kong API Gateway
+# TLS Termination: Edge with automatic HTTP -> HTTPS redirection
+# ==============================================================================
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: hotel-frontend
+  namespace: dev
+  labels:
+    app: hotel-frontend
+    app.kubernetes.io/name: hotel-frontend
+    app.kubernetes.io/part-of: hotel-premium
+    platform: openshift
+spec:
+  to:
+    kind: Service
+    name: hotel-frontend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: hotel-api-gateway
+  namespace: dev
+  labels:
+    app: kong-proxy
+    app.kubernetes.io/name: kong-proxy
+    app.kubernetes.io/part-of: hotel-premium
+    platform: openshift
+spec:
+  to:
+    kind: Service
+    name: kong-proxy
+    weight: 100
+  port:
+    targetPort: proxy
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

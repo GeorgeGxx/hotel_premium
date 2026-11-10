@@ -1,0 +1,30 @@
+# Red Hat OpenShift 4.x / ROSA / ARO Production Values
+global:
+  environment: openshift
+  namespace: hotel-premium
+  openshift: true
+  imagePullPolicy: IfNotPresent
+
+openshift:
+  enabled: true
+  route:
+    enabled: true
+    # Leave empty to let OpenShift Router auto-generate the canonical FQDN:
+    # hotel-frontend-hotel-premium.apps.<cluster-domain>
+    host: ""
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 75
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true

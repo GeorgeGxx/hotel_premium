@@ -1,0 +1,25 @@
+{{- if and .Values.openshift (and .Values.openshift.enabled .Values.openshift.route.enabled) }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: hotel-frontend
+  namespace: {{ .Values.global.namespace | default "dev" }}
+  labels:
+    app: hotel-frontend
+    app.kubernetes.io/name: hotel-frontend
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  {{- if and .Values.openshift.route.host (ne .Values.openshift.route.host "") }}
+  host: {{ .Values.openshift.route.host | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: hotel-frontend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.openshift.route.tls.termination | default "edge" }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
+{{- end }}

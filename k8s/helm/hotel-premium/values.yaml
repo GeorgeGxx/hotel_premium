@@ -20,6 +20,16 @@ pdb:
 networkPolicy:
   enabled: true
 
+# Red Hat OpenShift Specific Configuration (SCC & Routes)
+openshift:
+  enabled: false
+  route:
+    enabled: false
+    host: ""
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
 # Hotel Premium Microservices Specification
 services:
   roomService:

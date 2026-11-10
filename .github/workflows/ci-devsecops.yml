@@ -75,6 +75,7 @@ jobs:
           helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-dev.yaml
           helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-staging.yaml
           helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-prod.yaml
+          helm lint k8s/helm/hotel-premium -f k8s/helm/hotel-premium/values-openshift.yaml
 
       - name: Install Conftest 0.71.1
         run: |

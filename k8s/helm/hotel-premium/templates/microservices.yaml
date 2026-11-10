@@ -99,6 +99,7 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
+        {{- if not (or $.Values.global.openshift (and $.Values.openshift $.Values.openshift.enabled)) }}
         {{- if eq $svc.name "hotel-frontend" }}
         runAsUser: 101
         runAsGroup: 101
@@ -107,6 +108,7 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+        {{- end }}
         {{- end }}
       containers:
         - name: {{ $svc.name }}

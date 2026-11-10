@@ -1,0 +1,41 @@
+# ==============================================================================
+# Red Hat OpenShift 4.x Security Context Constraints (SCC) RoleBindings
+# Assigns 'anyuid' SCC exclusively to Stateful Infrastructure ServiceAccounts
+# (PostgreSQL, Redis 8.8.1, Kafka 8.3.2) while allowing application microservices
+# to run strictly under OpenShift's unprivileged 'restricted-v2' SCC.
+# ==============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hotel-data-anyuid-binding
+  namespace: data
+  labels:
+    app.kubernetes.io/name: hotel-premium
+    app.kubernetes.io/component: security-scc
+    platform: openshift
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: hotel-data-sa
+    namespace: data
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hotel-auth-anyuid-binding
+  namespace: auth
+  labels:
+    app.kubernetes.io/name: hotel-premium
+    app.kubernetes.io/component: security-scc
+    platform: openshift
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: auth

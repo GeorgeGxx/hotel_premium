@@ -10,7 +10,7 @@
       "properties": {
         "environment": {
           "type": "string",
-          "enum": ["dev", "staging", "prod", "production", "minikube"]
+          "enum": ["dev", "staging", "prod", "production", "minikube", "openshift"]
         },
         "namespace": {
           "type": "string",
@@ -19,6 +19,29 @@
         "imagePullPolicy": {
           "type": "string",
           "enum": ["IfNotPresent", "Always", "Never"]
+        },
+        "openshift": {
+          "type": "boolean"
+        }
+      }
+    },
+    "openshift": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "route": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "host": { "type": "string" },
+            "tls": {
+              "type": "object",
+              "properties": {
+                "termination": { "type": "string", "enum": ["edge", "passthrough", "reencrypt"] },
+                "insecureEdgeTerminationPolicy": { "type": "string", "enum": ["Redirect", "Allow", "None"] }
+              }
+            }
+          }
         }
       }
     },
