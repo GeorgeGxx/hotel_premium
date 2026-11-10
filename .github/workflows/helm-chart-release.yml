@@ -5,7 +5,7 @@ on:
     branches:
       - develop
       - staging
-      - prod
+      - master
     paths:
       - "k8s/helm/**"
       - "devsecops/policies/**"
@@ -13,7 +13,7 @@ on:
     branches:
       - develop
       - staging
-      - prod
+      - master
     paths:
       - "k8s/helm/**"
       - "devsecops/policies/**"

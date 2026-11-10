@@ -3,16 +3,14 @@ name: DevSecOps CI Pipeline
 on:
   push:
     branches:
-      - main
       - develop
       - staging
-      - prod
+      - master
   pull_request:
     branches:
-      - main
       - develop
       - staging
-      - prod
+      - master
 
 permissions:
   contents: read
