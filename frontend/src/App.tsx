@@ -9,6 +9,7 @@ import { GuestBookingModal } from './components/GuestBookingModal';
 import { GuestComparisonModal } from './components/GuestComparisonModal';
 import { ReservationsManager } from './components/ReservationsManager';
 import { LateralNotificationToast } from './components/LateralNotificationToast';
+import { CommandPalette } from './components/CommandPalette';
 import {
   Room,
   RoomStatus,
@@ -87,6 +88,19 @@ const App: React.FC = () => {
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
   const [activeToastNotification, setActiveToastNotification] = useState<AppNotification | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+
+  // Global Ctrl+K / Cmd+K listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const addNotification = useCallback(
     (title: string, message: string, category: NotificationCategory = 'SYSTEM') => {
@@ -501,6 +515,7 @@ const App: React.FC = () => {
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
         activeView={activeView}
         onViewChange={(view) => setActiveView(view)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
       {/* Floating Lateral Notification Toast (Top-Right High-Contrast Slide-In) */}
@@ -663,6 +678,34 @@ const App: React.FC = () => {
           onUpdateBasePrice={handleUpdateBasePrice}
         />
       )}
+
+      {/* Global Command Palette (Cmd+K / Ctrl+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        rooms={rooms}
+        stays={stays}
+        onSelectRoom={(room) => {
+          setSelectedRoomForCheckIn(room);
+          setActiveView('STAFF_PMS');
+        }}
+        onSelectStay={(_stay) => {
+          setActiveView('RESERVATIONS');
+        }}
+        onOpenQuickCheckIn={() => {
+          if (rooms.length > 0) {
+            setSelectedRoomForCheckIn(rooms[0]);
+          }
+        }}
+        onOpenNotifications={() => {
+          showToast('Zero-balance folio policy & housekeeping turnover monitors active.', 'System Notifications', 'SYSTEM');
+        }}
+        onNavigateTab={(tab) => {
+          if (tab === 'matrix') setActiveView('STAFF_PMS');
+          else if (tab === 'reservations') setActiveView('RESERVATIONS');
+          else setActiveView('GUEST_PORTAL');
+        }}
+      />
 
       {/* Enterprise Footer (Full-Bleed Fluid Width) */}
       <footer className="bg-slate-900/60 border-t border-slate-800/80 py-6 text-center text-xs text-slate-400 mt-12">

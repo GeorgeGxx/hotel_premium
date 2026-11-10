@@ -149,3 +149,22 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
 }
+
+export interface StayCharge {
+  id: string;
+  stay_id: string;
+  product_id?: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  created_at: string;
+}
+
+export interface AddStayChargeDTO {
+  stay_id: string;
+  product_id?: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+}

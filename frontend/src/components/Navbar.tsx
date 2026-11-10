@@ -5,6 +5,7 @@ import {
   Sparkles,
   LayoutGrid,
   Calendar,
+  Search,
 } from 'lucide-react';
 import { CurrentUser, AppNotification } from '../types/hotel';
 import { NotificationCenter } from './NotificationCenter';
@@ -21,6 +22,7 @@ interface NavbarProps {
   onOpenAdminPanel: () => void;
   activeView: ActiveAppView;
   onViewChange: (view: ActiveAppView) => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -33,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAdminPanel,
   activeView,
   onViewChange,
+  onOpenCommandPalette,
 }) => {
   return (
     <header className="sticky top-3 z-40 w-full px-4 sm:px-6 lg:px-8 xl:px-10 transition-all">
@@ -96,6 +99,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Action Controls */}
         <div className="flex items-center space-x-2">
+          {/* Quick Command Palette Trigger (Cmd+K) */}
+          {onOpenCommandPalette && (
+            <button
+              type="button"
+              onClick={onOpenCommandPalette}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-amber-500/40 text-slate-400 hover:text-white transition-all text-xs"
+              title="Search rooms, guests, or actions (Ctrl+K / Cmd+K)"
+            >
+              <Search className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden xl:inline text-[11px] text-slate-300">Quick Search</span>
+              <kbd className="hidden sm:inline-flex items-center text-[9px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700">
+                ⌘K
+              </kbd>
+            </button>
+          )}
+
           {/* Real-time Live Status Pulse */}
           <div
             className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/60 border border-slate-800 text-[10px] text-slate-400 font-semibold select-none"

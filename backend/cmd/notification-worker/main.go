@@ -65,7 +65,11 @@ func main() {
 		defer redisClient.Close()
 	}
 
-	// 2. Metrics & Health Endpoint for Prometheus & Observability Mesh
+	// 2. Kafka DLQ Manager Initialization (3 retries, 500ms base backoff)
+	dlqManager := kafka.NewDLQManager(cfg.KafkaBootstrapServers, cfg.KafkaStayTopic, 3, 500*time.Millisecond)
+	defer dlqManager.Close()
+
+	// 3. Metrics & Health Endpoint for Prometheus & Observability Mesh
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -98,6 +102,34 @@ func main() {
 	}
 	mux.HandleFunc("GET /api/v1/notifications", notifHandler)
 	mux.HandleFunc("GET /api/v1/notifications/", notifHandler)
+
+	// SRE DLQ Inspection and Replay Endpoints
+	mux.HandleFunc("GET /api/v1/dlq/events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(dlqManager.GetDLQEvents())
+	})
+
+	mux.HandleFunc("POST /api/v1/dlq/replay", func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			TargetTopic string `json:"target_topic"`
+			Key         string `json:"key"`
+			Value       string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+			return
+		}
+		if payload.TargetTopic == "" {
+			payload.TargetTopic = cfg.KafkaStayTopic
+		}
+		if err := dlqManager.Replay(r.Context(), payload.TargetTopic, []byte(payload.Key), []byte(payload.Value)); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"failed to replay: %s"}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "REPLAYED", "target_topic": payload.TargetTopic})
+	})
+
 	mux.Handle("GET /metrics", promhttp.Handler())
 	swagger.RegisterSwaggerUIMux(mux, "notification-worker")
 
@@ -112,10 +144,6 @@ func main() {
 		slog.Info("Notification Worker metrics & health listening", "port", port)
 		_ = server.ListenAndServe()
 	}()
-
-	// 3. Kafka DLQ Manager Initialization (3 retries, 500ms base backoff)
-	dlqManager := kafka.NewDLQManager(cfg.KafkaBootstrapServers, cfg.KafkaStayTopic, 3, 500*time.Millisecond)
-	defer dlqManager.Close()
 
 	// 4. Kafka Consumer Setup
 	reader := kafkaGo.NewReader(kafkaGo.ReaderConfig{

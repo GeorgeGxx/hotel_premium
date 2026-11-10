@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { LuxuryInvoiceModal } from './LuxuryInvoiceModal';
 import {
   StayDetails,
   Room,
@@ -50,6 +51,7 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
   stays,
   rooms,
   currentUser,
+  onRefreshStays,
   onCreateStay,
   onUpdateStay,
   onCancelStay,
@@ -60,6 +62,7 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [editingStay, setEditingStay] = useState<StayDetails | null>(null);
+  const [invoiceStay, setInvoiceStay] = useState<StayDetails | null>(null);
 
   // Folio Settlement & Zero-Balance Departure state
   const [settlementStay, setSettlementStay] = useState<StayDetails | null>(null);
@@ -491,6 +494,15 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
                               <CreditCard className="w-4 h-4" />
                             </button>
                           )}
+
+                          {/* View & Print Official Folio Invoice Statement */}
+                          <button
+                            onClick={() => setInvoiceStay(stay)}
+                            title="View & Print Official Folio Statement"
+                            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          >
+                            <Receipt className="w-4 h-4" />
+                          </button>
 
                           {/* Edit available for basic_user and admin_user if not finished */}
                           {stay.status !== 'CHECKED_OUT' && stay.status !== 'CANCELLED' && (
@@ -1125,6 +1137,14 @@ export const ReservationsManager: React.FC<ReservationsManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Luxury Folio Statement / Printable Invoice Modal */}
+      {invoiceStay && (
+        <LuxuryInvoiceModal
+          stay={invoiceStay}
+          onClose={() => setInvoiceStay(null)}
+          onChargeAdded={onRefreshStays}
+        />
       )}
     </div>
   );

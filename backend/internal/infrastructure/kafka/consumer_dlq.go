@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,11 +31,23 @@ var (
 	)
 )
 
+type DLQEventRecord struct {
+	Key           string    `json:"key"`
+	Value         string    `json:"value"`
+	OriginalTopic string    `json:"original_topic"`
+	DLQTopic      string    `json:"dlq_topic"`
+	ErrorReason   string    `json:"error_reason"`
+	FailedAt      time.Time `json:"failed_at"`
+}
+
 type DLQManager struct {
+	bootstrap   string
 	dlqWriter   *kafkaGo.Writer
 	dlqTopic    string
 	maxRetries  int
 	baseBackoff time.Duration
+	recentEvents []DLQEventRecord
+	mu          sync.RWMutex
 }
 
 func NewDLQManager(bootstrapServers string, baseTopic string, maxRetries int, baseBackoff time.Duration) *DLQManager {
@@ -50,10 +63,12 @@ func NewDLQManager(bootstrapServers string, baseTopic string, maxRetries int, ba
 	}
 
 	return &DLQManager{
-		dlqWriter:   writer,
-		dlqTopic:    dlqTopic,
-		maxRetries:  maxRetries,
-		baseBackoff: baseBackoff,
+		bootstrap:    bootstrapServers,
+		dlqWriter:    writer,
+		dlqTopic:     dlqTopic,
+		maxRetries:   maxRetries,
+		baseBackoff:  baseBackoff,
+		recentEvents: make([]DLQEventRecord, 0, 50),
 	}
 }
 
@@ -110,8 +125,52 @@ func (m *DLQManager) ProcessWithRetry(ctx context.Context, msg kafkaGo.Message, 
 		return fmt.Errorf("dlq publish error: %w", err)
 	}
 
+	m.recordEvent(DLQEventRecord{
+		Key:           string(msg.Key),
+		Value:         string(msg.Value),
+		OriginalTopic: msg.Topic,
+		DLQTopic:      m.dlqTopic,
+		ErrorReason:   lastErr.Error(),
+		FailedAt:      time.Now().UTC(),
+	})
+
 	dlqCounter.WithLabelValues(msg.Topic, m.dlqTopic, lastErr.Error()).Inc()
 	return nil
+}
+
+func (m *DLQManager) recordEvent(rec DLQEventRecord) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.recentEvents) >= 50 {
+		m.recentEvents = m.recentEvents[1:]
+	}
+	m.recentEvents = append(m.recentEvents, rec)
+}
+
+// GetDLQEvents returns recent failed events captured by the DLQ manager
+func (m *DLQManager) GetDLQEvents() []DLQEventRecord {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	res := make([]DLQEventRecord, len(m.recentEvents))
+	copy(res, m.recentEvents)
+	return res
+}
+
+// Replay re-publishes a message from DLQ back to a destination topic for recovery
+func (m *DLQManager) Replay(ctx context.Context, targetTopic string, key, value []byte) error {
+	writer := &kafkaGo.Writer{
+		Addr:         kafkaGo.TCP(m.bootstrap),
+		Topic:        targetTopic,
+		Balancer:     &kafkaGo.LeastBytes{},
+		RequiredAcks: kafkaGo.RequireOne,
+	}
+	defer writer.Close()
+
+	return writer.WriteMessages(ctx, kafkaGo.Message{
+		Key:   key,
+		Value: value,
+		Time:  time.Now().UTC(),
+	})
 }
 
 func (m *DLQManager) Close() error {

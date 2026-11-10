@@ -7,6 +7,8 @@ import {
   StayStatus,
   PaymentStatus,
   ConciergeAddon,
+  StayCharge,
+  AddStayChargeDTO,
 } from '../types/hotel';
 
 const rawApiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -519,5 +521,83 @@ export function subscribeToLiveEvents(
     return () => {};
   }
 }
+
+// ==============================================================================
+// FOLIO ADD-ON CHARGES & POS INTEGRATION
+// ==============================================================================
+
+let mockChargesMemory: StayCharge[] = [
+  {
+    id: 'chg-001',
+    stay_id: 'stay-002',
+    description: 'Sommelier Wine & Artisanal Cheese Selection',
+    quantity: 1,
+    unit_price: 68.0,
+    total_price: 68.0,
+    created_at: new Date(Date.now() - 3600000 * 14).toISOString(),
+  },
+  {
+    id: 'chg-002',
+    stay_id: 'stay-002',
+    description: 'Hydrotherapy & Deep Tissue Spa Session',
+    quantity: 1,
+    unit_price: 120.0,
+    total_price: 120.0,
+    created_at: new Date(Date.now() - 3600000 * 8).toISOString(),
+  },
+];
+
+export async function fetchStayCharges(stayId: string): Promise<StayCharge[]> {
+  try {
+    const res = await fetch(`${API_BASE}/billing/stays/${stayId}/charges`, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('Backend charges fetch failed, falling back to local memory:', err);
+  }
+  return mockChargesMemory.filter((c) => c.stay_id === stayId);
+}
+
+export async function addStayCharge(dto: AddStayChargeDTO): Promise<StayCharge> {
+  const newCharge: StayCharge = {
+    id: generateIdempotencyKey('chg'),
+    stay_id: dto.stay_id,
+    product_id: dto.product_id,
+    description: dto.description,
+    quantity: dto.quantity || 1,
+    unit_price: dto.unit_price,
+    total_price: (dto.quantity || 1) * dto.unit_price,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/billing/charges`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Idempotency-Key': generateIdempotencyKey('idem-chg'),
+      },
+      body: JSON.stringify(dto),
+    });
+    if (res.ok) {
+      const serverCharge = await res.json();
+      mockChargesMemory.push(serverCharge);
+      return serverCharge;
+    }
+  } catch (err) {
+    console.warn('Backend add charge failed, applying locally:', err);
+  }
+
+  mockChargesMemory.push(newCharge);
+  return newCharge;
+}
+
 
 
