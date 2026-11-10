@@ -235,6 +235,11 @@ spec:
         - name: prometheus
           image: prom/prometheus:v3.14.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
@@ -415,6 +420,11 @@ spec:
         - name: grafana
           image: grafana/grafana:13.2.3
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: GF_SECURITY_ADMIN_USER
               value: "admin"
@@ -561,6 +571,11 @@ spec:
         - name: loki
           image: grafana/loki:3.7.8
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "-config.file=/etc/loki/loki.yaml"
           ports:
@@ -688,6 +703,11 @@ spec:
         - name: tempo
           image: grafana/tempo:3.0.5
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "-config.file=/etc/tempo/tempo.yaml"
           ports:
@@ -883,6 +903,11 @@ spec:
         - name: alloy
           image: grafana/alloy:v1.21.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "run"
             - "/etc/alloy/config.alloy"

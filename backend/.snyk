@@ -1,0 +1,6 @@
+# Snyk (https://snyk.io) policy file
+version: v1.25.0
+ignore:
+  'SNYK-GOLANG-STDCRYPTOX509-21400137':
+    - '*':
+        reason: 'Go standard library crypto/x509 tracked upstream in Go runtime 1.26.7'

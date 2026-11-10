@@ -49,10 +49,7 @@ func (c *CacheManager) GetOrFetch(ctx context.Context, key string, ttl time.Dura
 	result, err, _ := c.group.Do(key, func() (interface{}, error) {
 		// Double check inside singleflight
 		if val, err := c.client.Get(ctx, key).Result(); err == nil {
-			var cached interface{}
-			if err := json.Unmarshal([]byte(val), &cached); err == nil {
-				return cached, nil
-			}
+			return json.RawMessage(val), nil
 		}
 
 		freshData, fetchErr := fetchFunc()
@@ -88,9 +85,18 @@ func (c *CacheManager) Invalidate(ctx context.Context, keys ...string) error {
 }
 
 func copyValue(src, dest interface{}) error {
-	bytes, err := json.Marshal(src)
-	if err != nil {
-		return fmt.Errorf("failed to serialize cache source: %w", err)
+	var bytes []byte
+	var err error
+	switch v := src.(type) {
+	case json.RawMessage:
+		bytes = v
+	case []byte:
+		bytes = v
+	default:
+		bytes, err = json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("failed to serialize cache source: %w", err)
+		}
 	}
 	if err := json.Unmarshal(bytes, dest); err != nil {
 		return fmt.Errorf("failed to deserialize cache destination: %w", err)

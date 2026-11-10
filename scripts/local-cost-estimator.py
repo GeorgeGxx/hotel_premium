@@ -121,6 +121,10 @@ def query_opencost_live(endpoint: str = "http://localhost:9003") -> Optional[Dic
     """Polls active OpenCost v2.5.32 API for real-time workload cost metrics."""
     try:
         url = f"{endpoint}/allocation/compute?window=1d&aggregate=namespace"
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(url, timeout=3) as resp:
             if resp.status == 200:
                 return json.loads(resp.read().decode("utf-8"))
@@ -134,6 +138,10 @@ def query_promql(prom_url: str, query: str) -> Optional[float]:
     try:
         encoded = urllib.parse.urlencode({"query": query})
         url = f"{prom_url.rstrip('/')}/api/v1/query?{encoded}"
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(url, timeout=4) as resp:
             if resp.status == 200:
                 payload = json.loads(resp.read().decode("utf-8"))

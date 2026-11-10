@@ -51,9 +51,14 @@ def http_request(
         elif isinstance(body, str):
             data_bytes = body.encode("utf-8")
 
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Disallowed URL scheme '{parsed.scheme}'; only http/https are permitted")
+
     req = urllib.request.Request(url, data=data_bytes, headers=req_headers, method=method)
     start = time.perf_counter()
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             raw = resp.read().decode("utf-8", errors="replace")

@@ -27,6 +27,11 @@ spec:
         - name: postgres-exporter
           image: prometheuscommunity/postgres-exporter:v0.20.1
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: DATA_SOURCE_NAME
               value: "postgresql://hotel_user:hotel_password@postgres.data.svc.cluster.local:5432/hotel_db?sslmode=disable"
@@ -96,6 +101,11 @@ spec:
         - name: redis-exporter
           image: oliver006/redis_exporter:v1.94.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: REDIS_ADDR
               value: "redis.data.svc.cluster.local:6379"
