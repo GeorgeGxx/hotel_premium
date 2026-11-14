@@ -17,3 +17,4 @@ maintainers:
 annotations:
   helm.sh/engine: "v4.3.1"
   helm.sh/server-side-apply: "true"
+  hotel-premium.io/helm-oci-repository: oci://us-central1-docker.pkg.dev/hotel-premium-gcp/charts/hotel-premium

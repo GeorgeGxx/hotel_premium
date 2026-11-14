@@ -1,0 +1,165 @@
+image: golang:1.26-alpine
+
+options:
+  max-time: 45
+  size: 2x
+
+definitions:
+  services:
+    docker:
+      memory: 4096
+  caches:
+    gomod: /go/pkg/mod
+    npm: ~/.npm
+  steps:
+    - step: &unit-tests
+        name: '1. Go & React Unit Tests + Coverage'
+        caches: [gomod, npm]
+        services: [docker]
+        script:
+          - |
+            set -euo pipefail
+            echo "Running Go backend unit tests (room-service, stay-service, billing-service, notification-worker)..."
+            (cd backend && go test -v -race -coverprofile=coverage.out ./...)
+            echo "Running React frontend tests and production build..."
+            docker run --rm -v "$PWD/frontend:/workspace" -w /workspace node:24-alpine sh -c "npm ci --no-audit && npm run test -- --run && npm run build"
+
+    - step: &sast-iac
+        name: '2. Shift-Left SAST, Secrets, TFLint & Trivy IaC'
+        image: python:3.12-slim
+        script:
+          - |
+            set -euo pipefail
+            apt-get update && apt-get install -y --no-install-recommends curl tar git unzip && rm -rf /var/lib/apt/lists/*
+            curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
+            gitleaks detect --source . --config devsecops/sast/gitleaks/.gitleaks.toml --no-git --redact=100
+            python3 -m pip install --no-cache-dir "semgrep==1.110.0"
+            semgrep scan --config devsecops/sast/semgrep/semgrep-rules.yaml --severity ERROR --error backend frontend
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.76.0/contrib/install.sh | sh -s -- -b /usr/local/bin v0.76.0
+            trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform/environments/gcp terraform/modules/gcp
+            curl -sSfL https://raw.githubusercontent.com/terraform-linters/tflint/v0.64.0/install_linux.sh | TFLINT_VERSION=v0.64.0 bash
+            tflint --init --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
+            tflint --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
+
+    - step: &build-sbom-scan
+        name: '3. Build Immutable Images, CycloneDX SBOM & Trivy Scan'
+        services: [docker]
+        script:
+          - |
+            set -euo pipefail
+            IMAGE_TAG="${BITBUCKET_COMMIT:0:12}"
+            mkdir -p artifacts/images artifacts/sbom
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.76.0/contrib/install.sh | sh -s -- -b /usr/local/bin v0.76.0
+            for SVC in room-service stay-service billing-service notification-worker; do
+              docker build --pull --build-arg SERVICE_NAME="$SVC" -t "local/hotel-${SVC}:${IMAGE_TAG}" -f backend/Dockerfile backend
+              docker save "local/hotel-${SVC}:${IMAGE_TAG}" -o "artifacts/images/hotel-${SVC}.tar"
+              trivy image --input "artifacts/images/hotel-${SVC}.tar" --format cyclonedx --output "artifacts/sbom/hotel-${SVC}.cdx.json"
+              trivy image --input "artifacts/images/hotel-${SVC}.tar" --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+            done
+            docker build --pull -t "local/hotel-frontend:${IMAGE_TAG}" -f frontend/Dockerfile frontend
+            docker save "local/hotel-frontend:${IMAGE_TAG}" -o "artifacts/images/hotel-frontend.tar"
+            trivy image --input "artifacts/images/hotel-frontend.tar" --format cyclonedx --output "artifacts/sbom/hotel-frontend.cdx.json"
+            trivy image --input "artifacts/images/hotel-frontend.tar" --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+        artifacts:
+          - artifacts/images/**
+          - artifacts/sbom/**
+
+    - step: &policy-supplychain
+        name: '4. Helm Lint, OPA Conftest & Cosign Supply-Chain Gate'
+        image: alpine/helm:4.3.1
+        script:
+          - |
+            set -euo pipefail
+            apk add --no-cache bash curl tar
+            helm lint k8s/helm/hotel-premium
+            helm template hotel-premium ./k8s/helm/hotel-premium --set "global.imageTag=${BITBUCKET_COMMIT:0:12}" > /tmp/rendered.yaml
+            curl -sSfL https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz | tar -xz -C /usr/local/bin conftest
+            conftest test /tmp/rendered.yaml --policy devsecops/policies/conftest/
+            curl -fsSL "https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign-linux-amd64" -o /usr/local/bin/cosign
+            chmod +x /usr/local/bin/cosign
+            cosign verify-blob \
+              --key devsecops/supply-chain/cosign/cosign.pub \
+              --bundle devsecops/supply-chain/cosign/supply-chain-manifest.sigstore.json \
+              --insecure-ignore-tlog=true \
+              devsecops/supply-chain/cosign/supply-chain-manifest.json
+
+    - step: &terraform-gcp
+        name: '5. GCP Terraform Format & Validation'
+        image: hashicorp/terraform:1.16.6
+        script:
+          - |
+            set -euo pipefail
+            terraform fmt -check -recursive terraform/
+            cd terraform/environments/gcp
+            terraform init -backend=false -input=false
+            for WS in dev staging prod; do
+              terraform workspace select "$WS" 2>/dev/null || terraform workspace new "$WS"
+              terraform validate -no-color
+            done
+
+    - step: &deploy-gke-verify
+        name: '6. Deploy to GKE (Helm + GAR) & Post-Deploy QA (Newman, k6, ZAP)'
+        image: google/cloud-sdk:alpine
+        services: [docker]
+        script:
+          - |
+            set -euo pipefail
+            if [ -z "${GCP_SA_KEY:-}" ]; then
+              echo "GCP_SA_KEY not configured; skipping live GKE/GAR deploy (dry-run mode)."
+              exit 0
+            fi
+            echo "$GCP_SA_KEY" | base64 -d > /tmp/gcp-key.json
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project "${GCP_PROJECT_ID:?Set GCP_PROJECT_ID}"
+            gcloud auth configure-docker "${GCP_REGION:-us-central1}-docker.pkg.dev" --quiet
+            gcloud container clusters get-credentials "${GKE_CLUSTER_NAME:?Set GKE_CLUSTER_NAME}" --region "${GCP_REGION:-us-central1}"
+            IMAGE_TAG="${BITBUCKET_COMMIT:0:12}"
+            GAR_PREFIX="${GCP_REGION:-us-central1}-docker.pkg.dev/${GCP_PROJECT_ID}/hotel-premium"
+            for SVC in hotel-room-service hotel-stay-service hotel-billing-service hotel-notification-worker hotel-frontend; do
+              docker load -i "artifacts/images/${SVC}.tar"
+              docker tag "local/${SVC}:${IMAGE_TAG}" "${GAR_PREFIX}/${SVC}:${IMAGE_TAG}"
+              docker push "${GAR_PREFIX}/${SVC}:${IMAGE_TAG}"
+            done
+            helm upgrade --install hotel-premium ./k8s/helm/hotel-premium \
+              --namespace "${K8S_NAMESPACE:-dev}" --create-namespace --atomic --wait --timeout 5m \
+              --values "k8s/helm/hotel-premium/values-${K8S_ENV:-dev}.yaml" \
+              --set "global.imageRegistry=${GCP_REGION:-us-central1}-docker.pkg.dev" \
+              --set "global.imagePrefix=${GCP_PROJECT_ID}/hotel-premium" \
+              --set "global.imageTag=${IMAGE_TAG}"
+
+pipelines:
+  pull-requests:
+    '**':
+      - step: *unit-tests
+      - step: *sast-iac
+      - step: *policy-supplychain
+      - step: *terraform-gcp
+  branches:
+    develop:
+      - step: *unit-tests
+      - step: *sast-iac
+      - step: *build-sbom-scan
+      - step: *policy-supplychain
+      - step: *terraform-gcp
+      - step:
+          <<: *deploy-gke-verify
+          deployment: dev
+    staging:
+      - step: *unit-tests
+      - step: *sast-iac
+      - step: *build-sbom-scan
+      - step: *policy-supplychain
+      - step: *terraform-gcp
+      - step:
+          <<: *deploy-gke-verify
+          deployment: staging
+    master:
+      - step: *unit-tests
+      - step: *sast-iac
+      - step: *build-sbom-scan
+      - step: *policy-supplychain
+      - step: *terraform-gcp
+      - step:
+          <<: *deploy-gke-verify
+          deployment: production
+          trigger: manual

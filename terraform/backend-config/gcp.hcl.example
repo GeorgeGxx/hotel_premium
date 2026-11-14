@@ -1,0 +1,5 @@
+# Copy to terraform/backend-config/gcp.hcl and fill in your pre-provisioned
+# state bucket. Keep this file out of Git. One backend is shared by the three
+# Terraform workspaces: dev, staging, and prod. GCS locks state natively.
+bucket = "<globally-unique-state-bucket>"
+prefix = "hotel-premium/gcp"

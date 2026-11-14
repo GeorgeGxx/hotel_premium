@@ -26,7 +26,7 @@ param(
     )]
     [string]$Command = "help",
 
-    [ValidateSet("minikube", "aws")]
+    [ValidateSet("minikube", "gcp")]
     [string]$Platform = "minikube",
 
     [ValidateSet("dev", "minikube", "staging", "prod")]
@@ -115,7 +115,7 @@ $infraDir      = Join-Path $root "k8s\minikube\infra"
 $servicesDir   = Join-Path $root "k8s\minikube\services"
 $helmChartDir  = Join-Path $root "k8s\helm\hotel-premium"
 $tfMinikubeDir = Join-Path $root "terraform\environments\local-minikube"
-$tfAwsDir      = Join-Path $root "terraform\environments\aws"
+$tfGcpDir      = Join-Path $root "terraform\environments\gcp"
 $gatekeeperDir = Join-Path $root "devsecops\policies\gatekeeper"
 $conftestDir   = Join-Path $root "devsecops\policies\conftest"
 
@@ -816,7 +816,7 @@ function Invoke-LocalDevSecOpsScan {
     Write-Host "  ▶ [3/6] Running Terraform IaC Linter (TFLint 0.64.0)..." -ForegroundColor White
     if (Get-Command tflint -ErrorAction SilentlyContinue) {
         $tflintConfig = Join-Path $root "devsecops\iac\tflint\.tflint.hcl"
-        $targetTfDir = if ($Platform -eq "aws") { $tfAwsDir } else { $tfMinikubeDir }
+        $targetTfDir = if ($Platform -eq "gcp") { $tfGcpDir } else { $tfMinikubeDir }
         $tflintArgs = @("--chdir=$targetTfDir")
         if (Test-Path $tflintConfig) {
             $tflintArgs += "--config=$tflintConfig"
@@ -2001,7 +2001,7 @@ switch ($Command) {
     }
 
     "plan" {
-        $targetDir = if ($Platform -eq "aws") { $tfAwsDir } else { $tfMinikubeDir }
+        $targetDir = if ($Platform -eq "gcp") { $tfGcpDir } else { $tfMinikubeDir }
         Show-Banner "Terraform Plan ($Platform - $targetDir)"
         Invoke-TerraformCommand -Arguments @("-chdir=$targetDir", "init", "-upgrade", "-input=false", "-no-color") -Description "Terraform init ($Platform)"
         Invoke-TerraformCommand -Arguments @("-chdir=$targetDir", "plan", "-no-color") -Description "Terraform plan ($Platform)" -ShowSuccessSummary
@@ -2013,17 +2013,17 @@ switch ($Command) {
             Invoke-TerraformCommand -Arguments @("-chdir=$tfMinikubeDir", "init", "-upgrade", "-input=false", "-no-color") -Description "Terraform init (Minikube)"
             Invoke-TerraformCommand -Arguments @("-chdir=$tfMinikubeDir", "apply", "-input=false", "-auto-approve", "-no-color") -Description "Terraform apply (Minikube)" -ShowSuccessSummary
         } else {
-            Show-Banner "Terraform Apply (AWS Cloud Infrastructure)"
-            Invoke-TerraformCommand -Arguments @("-chdir=$tfAwsDir", "init", "-upgrade", "-input=false", "-no-color") -Description "Terraform init (AWS)"
-            $applyArgs = @("-chdir=$tfAwsDir", "apply", "-no-color")
+            Show-Banner "Terraform Apply (GCP Cloud Infrastructure)"
+            Invoke-TerraformCommand -Arguments @("-chdir=$tfGcpDir", "init", "-upgrade", "-input=false", "-no-color") -Description "Terraform init (GCP)"
+            $applyArgs = @("-chdir=$tfGcpDir", "apply", "-no-color")
             if ($AutoApprove) { $applyArgs += "-auto-approve" }
-            Invoke-TerraformCommand -Arguments $applyArgs -Description "Terraform apply (AWS)" -ShowSuccessSummary
+            Invoke-TerraformCommand -Arguments $applyArgs -Description "Terraform apply (GCP)" -ShowSuccessSummary
         }
     }
 
     "unlock" {
         if (-not $LockId) { throw "Provide -LockId <ID> to force-unlock Terraform state." }
-        $targetDir = if ($Platform -eq "aws") { $tfAwsDir } else { $tfMinikubeDir }
+        $targetDir = if ($Platform -eq "gcp") { $tfGcpDir } else { $tfMinikubeDir }
         & terraform -chdir=$targetDir force-unlock -force $LockId
     }
 
@@ -2034,7 +2034,7 @@ switch ($Command) {
 
     "graph" {
         Show-Banner "Generating Visual Terraform Dependency Graph (Graphviz)"
-        $targetDir = if ($Platform -eq "aws") { $tfAwsDir } else { $tfMinikubeDir }
+        $targetDir = if ($Platform -eq "gcp") { $tfGcpDir } else { $tfMinikubeDir }
         if (Get-Command dot -ErrorAction SilentlyContinue) {
             $outPath = Join-Path $root "docs\terraform-graph.png"
             & terraform -chdir=$targetDir graph | dot -Tpng -o $outPath
