@@ -149,8 +149,14 @@ module "workload_identity" {
   name                = local.name
   environment         = local.env
   project_id          = var.project_id
-  k8s_namespace       = "default"
-  k8s_service_account = "backend-workload-identity"
+  k8s_namespace       = local.env == "dev" ? "dev" : "hotel-${local.env}"
+  k8s_service_account = "stay-service-sa"
+  k8s_service_accounts = [
+    "room-service-sa",
+    "stay-service-sa",
+    "billing-service-sa",
+    "notification-worker-sa"
+  ]
 }
 
 module "cloud_dns" {

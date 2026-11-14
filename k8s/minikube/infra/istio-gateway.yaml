@@ -31,7 +31,36 @@ spec:
   gateways:
     - hotel-gateway
   http:
-    - match:
+    - name: gin-api-via-kong
+      match:
+        - uri:
+            prefix: /api/v1/rooms
+        - uri:
+            prefix: /api/v1/stays
+        - uri:
+            prefix: /api/v1/billing
+        - uri:
+            prefix: /api/v1/notifications
+        - uri:
+            prefix: /api/v1/dlq
+        - uri:
+            prefix: /api/v1/events/live
+        - uri:
+            prefix: /api/v1/health
+        - uri:
+            prefix: /api/v1/ready
+      route:
+        - destination:
+            host: kong-proxy.dev.svc.cluster.local
+            port:
+              number: 8000
+      timeout: 15s
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: gateway-error,connect-failure,refused-stream
+    - name: frontend-and-default-via-kong
+      match:
         - uri:
             prefix: /
       route:
@@ -97,6 +126,13 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -119,6 +155,13 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -141,6 +184,13 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -163,6 +213,13 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -185,6 +242,13 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy

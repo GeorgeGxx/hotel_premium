@@ -1,23 +1,23 @@
-# Dead Letter Topic for Failed Events
+# Dead Letter Topic for Failed Stay Lifecycle Events
 resource "google_pubsub_topic" "dead_letter" {
-  name         = "${var.name}-${var.environment}-orders-dlq"
+  name         = "${var.name}-${var.environment}-stays-lifecycle-dlq"
   kms_key_name = var.kms_key_id
   labels       = var.labels
 }
 
-# Main Orders Event Topic (MSK/Kafka equivalent)
-resource "google_pubsub_topic" "orders" {
-  name         = "${var.name}-${var.environment}-orders-topic"
+# Main Hotel Stays Lifecycle Event Topic (hotel.stays.lifecycle.v1)
+resource "google_pubsub_topic" "stays_lifecycle" {
+  name         = "${var.name}-${var.environment}-stays-lifecycle-topic"
   kms_key_name = var.kms_key_id
   labels       = var.labels
 
   message_retention_duration = "${var.retention_hours * 3600}s"
 }
 
-# Consumer Subscription with Dead-Letter Policy
-resource "google_pubsub_subscription" "orders_sub" {
-  name  = "${var.name}-${var.environment}-orders-consumer"
-  topic = google_pubsub_topic.orders.id
+# Consumer Subscription for Notification Worker with Dead-Letter Policy
+resource "google_pubsub_subscription" "stays_lifecycle_sub" {
+  name  = "${var.name}-${var.environment}-notification-worker-sub"
+  topic = google_pubsub_topic.stays_lifecycle.id
 
   ack_deadline_seconds       = 30
   retain_acked_messages      = false

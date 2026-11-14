@@ -52,11 +52,20 @@ variable "services_range_name" {
 variable "labels" {
   description = "GCP resource labels applied to the GKE cluster for cost attribution."
   type        = map(string)
-  default     = {}
+  default = {
+    project    = "hotel-premium"
+    managed_by = "terraform"
+  }
 }
 
 variable "authorized_ipv4_cidr_block" {
   description = "The CIDR block from which to allow access to the master."
   type        = string
   default     = "10.0.0.0/8"
+}
+
+variable "node_service_account" {
+  description = "Least-privilege Google Service Account email for GKE nodes."
+  type        = string
+  default     = "gke-nodes-sa@hotel-premium-dev.iam.gserviceaccount.com"
 }

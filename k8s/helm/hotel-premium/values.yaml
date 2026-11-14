@@ -14,6 +14,23 @@ migrations:
 secrets:
   secretName: hotel-app-secrets
 
+kong:
+  enabled: false
+  image: kong:3.9.4
+  replicas: 2
+
+istio:
+  enabled: true
+  ingressSelector: ingressgateway
+  hosts:
+    - "*"
+  tls:
+    enabled: false
+    credentialName: hotel-premium-tls-cert
+  canary:
+    stableWeight: 100
+    canaryWeight: 0
+
 autoscaling:
   enabled: true
   minReplicas: 2
@@ -161,7 +178,7 @@ services:
     image: georgegxx/hotel-frontend:1.0.0
     replicas: 2
     port: 80
-    targetPort: 80
+    targetPort: 8080
     readinessPath: /
     livenessPath: /
     resources:

@@ -16,6 +16,23 @@ pdb:
 networkPolicy:
   enabled: true
 
+kong:
+  enabled: true
+  image: kong:3.9.4
+  replicas: 3
+
+istio:
+  enabled: true
+  ingressSelector: ingressgateway
+  hosts:
+    - "*"
+  tls:
+    enabled: true
+    credentialName: hotel-premium-tls-cert
+  canary:
+    stableWeight: 100
+    canaryWeight: 0
+
 services:
   roomService:
     name: room-service
@@ -139,7 +156,7 @@ services:
     image: georgegxx/hotel-frontend:1.0.0
     replicas: 3
     port: 80
-    targetPort: 80
+    targetPort: 8080
     readinessPath: /
     livenessPath: /
     resources:

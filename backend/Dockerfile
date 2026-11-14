@@ -34,4 +34,7 @@ COPY --from=builder /app/bin/service /app/service
 
 USER appuser:appgroup
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:${PORT:-8081}/api/v1/health || exit 1
+
 ENTRYPOINT ["/app/service"]

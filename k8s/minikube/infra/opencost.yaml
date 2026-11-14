@@ -82,6 +82,8 @@ spec:
       securityContext:
         runAsNonRoot: true
         fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: opencost
           image: ghcr.io/opencost/opencost:1.121.3
@@ -91,6 +93,9 @@ spec:
             runAsNonRoot: true
             runAsUser: 10001
             readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: PROMETHEUS_SERVER_ENDPOINT
               value: "http://prometheus-server.observability.svc.cluster.local:9090"
@@ -120,6 +125,17 @@ spec:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
             runAsUser: 1001
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp-vol
+              mountPath: /tmp
+            - name: ui-cache-vol
+              mountPath: /var/cache/nginx
+            - name: ui-run-vol
+              mountPath: /var/run
           env:
             - name: UI_PORT
               value: "7000"
@@ -153,6 +169,10 @@ spec:
         - name: configs-vol
           emptyDir: {}
         - name: tmp-vol
+          emptyDir: {}
+        - name: ui-cache-vol
+          emptyDir: {}
+        - name: ui-run-vol
           emptyDir: {}
 ---
 apiVersion: v1

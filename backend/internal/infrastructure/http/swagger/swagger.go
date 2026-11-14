@@ -1,8 +1,6 @@
 package swagger
 
 import (
-	"encoding/json"
-	"html/template"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -391,29 +389,4 @@ func RegisterSwaggerUI(engine *gin.Engine, serviceName string) {
 	engine.GET("/swagger", handler)
 	engine.GET("/swagger/", handler)
 	engine.GET("/swagger/index.html", handler)
-}
-
-// RegisterSwaggerUIMux mounts /swagger, /swagger/index.html, and /swagger/doc.json onto any standard http.ServeMux
-func RegisterSwaggerUIMux(mux *http.ServeMux, serviceName string) {
-	spec := GetOpenAPISpec(serviceName)
-
-	docHandler := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(spec)
-	}
-
-	tmpl := template.Must(template.New("swagger-ui").Parse(SwaggerUIHTML))
-	htmlHandler := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(http.StatusOK)
-		_ = tmpl.Execute(w, nil)
-	}
-
-	mux.HandleFunc("GET /swagger/doc.json", docHandler)
-	mux.HandleFunc("GET /swagger", htmlHandler)
-	mux.HandleFunc("GET /swagger/", htmlHandler)
-	mux.HandleFunc("GET /swagger/index.html", htmlHandler)
 }

@@ -39,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: db-migrator
-          image: {{ .Values.migrations.image | default .Values.services.stayService.image }}
+          image: {{ include "hotel-premium.serviceImage" (dict "svc" .Values.services.stayService "global" .Values.global) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           args: ["-migrate"]
           env:
@@ -70,6 +70,10 @@ spec:
               ephemeral-storage: 64Mi
           securityContext:
             runAsNonRoot: true
+            {{- if not (or .Values.global.openshift (and .Values.openshift .Values.openshift.enabled)) }}
+            runAsUser: 10001
+            runAsGroup: 10001
+            {{- end }}
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             seccompProfile:
@@ -93,8 +97,8 @@ metadata:
 data:
   default.conf: |
     server {
-        listen 80;
-        listen [::]:80;
+        listen 8080;
+        listen [::]:8080;
         listen 5173;
         listen [::]:5173;
         server_name localhost;
@@ -109,10 +113,8 @@ data:
         gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript application/json image/svg+xml;
 
         add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-XSS-Protection "1; mode=block" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 
         location / {
             try_files $uri $uri/ /index.html;
@@ -199,22 +201,16 @@ spec:
         seccompProfile:
           type: RuntimeDefault
         {{- if not (or $.Values.global.openshift (and $.Values.openshift $.Values.openshift.enabled)) }}
-        {{- if eq $svc.name "hotel-frontend" }}
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
-        {{- else }}
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
         {{- end }}
-        {{- end }}
       containers:
         - name: {{ $svc.name }}
-          image: {{ $svc.image }}
+          image: {{ include "hotel-premium.serviceImage" (dict "svc" $svc "global" $.Values.global) }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
           ports:
-            - containerPort: {{ $svc.port }}
+            - containerPort: {{ $svc.targetPort | default $svc.port }}
               name: http
             {{- if eq $svc.name "hotel-frontend" }}
             - containerPort: 5173
@@ -243,6 +239,10 @@ spec:
             {{- toYaml $svc.resources | nindent 12 }}
           securityContext:
             runAsNonRoot: true
+            {{- if not (or $.Values.global.openshift (and $.Values.openshift $.Values.openshift.enabled)) }}
+            runAsUser: 10001
+            runAsGroup: 10001
+            {{- end }}
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             seccompProfile:
@@ -253,7 +253,7 @@ spec:
           startupProbe:
             httpGet:
               path: {{ $svc.livenessPath }}
-              port: {{ $svc.port }}
+              port: {{ $svc.targetPort | default $svc.port }}
             initialDelaySeconds: 2
             periodSeconds: 5
             timeoutSeconds: 3
@@ -261,7 +261,7 @@ spec:
           readinessProbe:
             httpGet:
               path: {{ $svc.readinessPath }}
-              port: {{ $svc.port }}
+              port: {{ $svc.targetPort | default $svc.port }}
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
@@ -269,7 +269,7 @@ spec:
           livenessProbe:
             httpGet:
               path: {{ $svc.livenessPath }}
-              port: {{ $svc.port }}
+              port: {{ $svc.targetPort | default $svc.port }}
             initialDelaySeconds: 15
             periodSeconds: 15
             timeoutSeconds: 3

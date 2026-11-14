@@ -1,0 +1,250 @@
+{{- if or (not (hasKey .Values "istio")) .Values.istio.enabled }}
+{{- $ns := .Values.global.namespace | default "dev" -}}
+{{- $istio := .Values.istio | default dict -}}
+{{- $ingressSelector := $istio.ingressSelector | default "ingressgateway" -}}
+{{- $hosts := $istio.hosts | default (list "*") -}}
+{{- $canary := $istio.canary | default dict -}}
+{{- $stableWeight := $canary.stableWeight | default 100 -}}
+{{- $canaryWeight := $canary.canaryWeight | default 0 -}}
+# ==============================================================================
+# Istio 1.31.2 Zero-Trust Mesh & Kong v3.9.4 North-South Integration (Helm)
+# Parameterized for Local (Minikube: dev) and Cloud (GKE / OpenShift: hotel-staging, hotel-prod)
+# ==============================================================================
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: hotel-gateway
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  selector:
+    istio: {{ $ingressSelector }}
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        {{- range $h := $hosts }}
+        - {{ $h | quote }}
+        {{- end }}
+    {{- if and $istio.tls $istio.tls.enabled }}
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: {{ $istio.tls.credentialName | default "hotel-premium-tls-cert" }}
+      hosts:
+        {{- range $h := $hosts }}
+        - {{ $h | quote }}
+        {{- end }}
+    {{- end }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: hotel-routes
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  hosts:
+    {{- range $h := $hosts }}
+    - {{ $h | quote }}
+    {{- end }}
+  gateways:
+    - hotel-gateway
+  http:
+    - name: gin-api-via-kong
+      match:
+        - uri:
+            prefix: /api/v1/rooms
+        - uri:
+            prefix: /api/v1/stays
+        - uri:
+            prefix: /api/v1/billing
+        - uri:
+            prefix: /api/v1/notifications
+        - uri:
+            prefix: /api/v1/dlq
+        - uri:
+            prefix: /api/v1/events/live
+        - uri:
+            prefix: /api/v1/health
+        - uri:
+            prefix: /api/v1/ready
+      route:
+        - destination:
+            host: kong-proxy.{{ $ns }}.svc.cluster.local
+            port:
+              number: 8000
+      timeout: 15s
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: gateway-error,connect-failure,refused-stream
+    - name: frontend-and-default-via-kong
+      match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: kong-proxy.{{ $ns }}.svc.cluster.local
+            port:
+              number: 8000
+      timeout: 15s
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: gateway-error,connect-failure,refused-stream
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-strict-mtls
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: kong-proxy-mtls
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  host: kong-proxy.{{ $ns }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+{{- range $key, $svc := .Values.services }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ $svc.name }}-mtls
+  namespace: {{ $ns }}
+  labels:
+    app: {{ $svc.name }}
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" $ | nindent 4 }}
+spec:
+  host: {{ $svc.name }}.{{ $ns }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: {{ if eq $svc.name "notification-worker" }}50{{ else }}100{{ end }}
+      http:
+        http1MaxPendingRequests: {{ if eq $svc.name "notification-worker" }}25{{ else }}50{{ end }}
+        maxRequestsPerConnection: {{ if eq $svc.name "notification-worker" }}10{{ else }}20{{ end }}
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ $svc.name }}-mesh
+  namespace: {{ $ns }}
+  labels:
+    app: {{ $svc.name }}
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" $ | nindent 4 }}
+spec:
+  hosts:
+    - {{ $svc.name }}.{{ $ns }}.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: {{ $svc.name }}.{{ $ns }}.svc.cluster.local
+            subset: v1
+            port:
+              number: {{ $svc.port }}
+          weight: {{ $stableWeight }}
+        {{- if gt (int $canaryWeight) 0 }}
+        - destination:
+            host: {{ $svc.name }}.{{ $ns }}.svc.cluster.local
+            subset: v2
+            port:
+              number: {{ $svc.port }}
+          weight: {{ $canaryWeight }}
+        {{- end }}
+      timeout: 10s
+      retries:
+        attempts: 2
+        perTryTimeout: 3s
+        retryOn: 5xx,connect-failure,refused-stream
+{{- end }}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-kong-and-mesh-internal
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  action: ALLOW
+  rules:
+    # Allow Istio IngressGateway -> Kong Gateway
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+      to:
+        - operation:
+            ports: ["8000"]
+    # Allow Kong Gateway and internal peer services in target namespace
+    - from:
+        - source:
+            namespaces: [{{ $ns | quote }}]
+      to:
+        - operation:
+            ports: ["80", "5173", "8000", "8080", "8081", "8082", "8083", "8084", "5432", "6379", "9092"]
+    # Allow frontend web traffic from ingress / port-forward clients
+    - to:
+        - operation:
+            ports: ["80", "5173", "8080"]
+    # Allow Prometheus / Alloy and monitoring tools in observability namespace to scrape metrics & health/readiness endpoints
+    - from:
+        - source:
+            namespaces: ["observability", {{ $ns | quote }}]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics*", "/api/v1/health*", "/api/v1/ready*", "/ready*", "/healthz*", "/readyz*", "/status*", "/live*"]
+            ports: ["8001", "8100", "8080", "8081", "8082", "8083", "8084", "5173"]
+{{- end }}

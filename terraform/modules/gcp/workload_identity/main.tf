@@ -5,11 +5,13 @@ resource "google_service_account" "this" {
   description  = "Service account mapped to Kubernetes ServiceAccount via GCP Workload Identity"
 }
 
-# Bind GSA to KSA via roles/iam.workloadIdentityUser
+# Bind GSA to Hotel Premium KSAs via roles/iam.workloadIdentityUser
 resource "google_service_account_iam_member" "workload_identity_user" {
+  for_each = toset(distinct(concat([var.k8s_service_account], var.k8s_service_accounts)))
+
   service_account_id = google_service_account.this.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.k8s_namespace}/${var.k8s_service_account}]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.k8s_namespace}/${each.value}]"
 }
 
 # Grant optional GCP roles to the Service Account

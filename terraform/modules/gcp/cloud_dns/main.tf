@@ -3,6 +3,10 @@ resource "google_dns_managed_zone" "this" {
   dns_name    = "${var.domain_name}."
   description = "Managed Cloud DNS Zone for ${var.name} (${var.environment})"
 
+  dnssec_config {
+    state = "on"
+  }
+
   labels = var.labels
 }
 

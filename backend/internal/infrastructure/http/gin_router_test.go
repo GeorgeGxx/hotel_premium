@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -216,5 +217,35 @@ func TestGinStayEngine_ListAndCheckIn(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Elena Rostova") {
 		t.Fatalf("expected Elena Rostova in response, got %s", rec.Body.String())
+	}
+}
+
+func TestGinNotificationEngine_StatusAndDLQ(t *testing.T) {
+	var proc, dedup atomic.Uint64
+	proc.Store(7)
+	dedup.Store(2)
+
+	engine := NewGinNotificationEngine("hotel.stays.lifecycle.v1", nil, &proc, &dedup)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /api/v1/notifications, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"processed_events":7`) {
+		t.Fatalf("expected processed_events:7 in body, got %s", rec.Body.String())
+	}
+
+	// Disallowed topic replay check
+	reqReplay := httptest.NewRequest(http.MethodPost, "/api/v1/dlq/replay", strings.NewReader(`{"target_topic":"evil.topic","key":"k","value":"v"}`))
+	reqReplay.Header.Set("Content-Type", "application/json")
+	reqReplay.Header.Set("X-User-Role", RoleAdmin)
+	recReplay := httptest.NewRecorder()
+	engine.ServeHTTP(recReplay, reqReplay)
+
+	if recReplay.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for disallowed target_topic, got %d", recReplay.Code)
 	}
 }

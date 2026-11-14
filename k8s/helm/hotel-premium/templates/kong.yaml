@@ -1,0 +1,314 @@
+{{- if and .Values.kong .Values.kong.enabled }}
+{{- $ns := .Values.global.namespace | default "dev" -}}
+{{- $kongImage := .Values.kong.image | default "kong:3.9.4" -}}
+{{- $replicas := .Values.kong.replicas | default 2 -}}
+# ==============================================================================
+# Kong API Gateway v3.9.4 (DB-less Declarative Mode) — Cloud & Multi-Env Helm Template
+# Routes North-South traffic from Istio Gateway to Gin Microservices in {{ $ns }}
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-declarative-config
+  namespace: {{ $ns }}
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/name: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+data:
+  kong.yaml: |
+    _format_version: "3.0"
+    _transform: true
+
+    services:
+      - name: room-service
+        url: http://room-service.{{ $ns }}.svc.cluster.local:8081
+        connect_timeout: 5000
+        write_timeout: 10000
+        read_timeout: 10000
+        retries: 2
+        routes:
+          - name: room-routes
+            paths:
+              - /api/v1/rooms
+            strip_path: false
+            preserve_host: false
+
+      - name: stay-service
+        url: http://stay-service.{{ $ns }}.svc.cluster.local:8082
+        connect_timeout: 5000
+        write_timeout: 15000
+        read_timeout: 15000
+        retries: 1
+        routes:
+          - name: stay-routes
+            paths:
+              - /api/v1/stays
+              - /api/v1/events/live
+              - /api/v1/health
+              - /api/v1/ready
+            strip_path: false
+            preserve_host: false
+
+      - name: billing-service
+        url: http://billing-service.{{ $ns }}.svc.cluster.local:8083
+        connect_timeout: 5000
+        write_timeout: 10000
+        read_timeout: 10000
+        retries: 1
+        routes:
+          - name: billing-routes
+            paths:
+              - /api/v1/billing
+            strip_path: false
+            preserve_host: false
+
+      - name: notification-worker
+        url: http://notification-worker.{{ $ns }}.svc.cluster.local:8084
+        connect_timeout: 5000
+        write_timeout: 10000
+        read_timeout: 10000
+        retries: 1
+        routes:
+          - name: notification-routes
+            paths:
+              - /api/v1/notifications
+              - /api/v1/dlq
+            strip_path: false
+            preserve_host: false
+
+      - name: hotel-frontend
+        url: http://hotel-frontend.{{ $ns }}.svc.cluster.local:80
+        connect_timeout: 5000
+        write_timeout: 10000
+        read_timeout: 10000
+        routes:
+          - name: frontend-routes
+            paths:
+              - /
+            strip_path: false
+            preserve_host: true
+
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-ID
+          generator: uuid#counter
+          echo_downstream: true
+
+      - name: rate-limiting
+        config:
+          minute: 300
+          hour: 10000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 2
+          size_unit: megabytes
+          require_content_length: false
+
+      - name: cors
+        config:
+          origins:
+            - http://localhost:5173
+            - http://localhost:8000
+            - http://localhost:80
+            - http://127.0.0.1:5173
+            - http://127.0.0.1:8000
+            - https://hotel-premium.internal
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - Origin
+            - X-Requested-With
+            - Idempotency-Key
+            - X-Idempotency-Key
+            - X-Correlation-ID
+            - traceparent
+            - tracestate
+          exposed_headers:
+            - X-Correlation-ID
+            - X-RateLimit-Limit-Minute
+            - X-RateLimit-Remaining-Minute
+          credentials: true
+          max_age: 3600
+
+      - name: prometheus
+        config:
+          per_consumer: false
+          status_code_metrics: true
+          latency_metrics: true
+          bandwidth_metrics: true
+          upstream_health_metrics: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kong-serviceaccount
+  namespace: {{ $ns }}
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  namespace: {{ $ns }}
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/name: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  replicas: {{ $replicas }}
+  selector:
+    matchLabels:
+      app: kong-gateway
+  template:
+    metadata:
+      labels:
+        app: kong-gateway
+        version: v1
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: kong-serviceaccount
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        {{- if not (or .Values.global.openshift (and .Values.openshift .Values.openshift.enabled)) }}
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        {{- end }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kong
+          image: {{ $kongImage }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: "/kong/declarative/kong.yaml"
+            - name: KONG_PREFIX
+              value: "/tmp/kong"
+            - name: KONG_PROXY_ACCESS_LOG
+              value: "/dev/stdout"
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: "/dev/stdout"
+            - name: KONG_PROXY_ERROR_LOG
+              value: "/dev/stderr"
+            - name: KONG_ADMIN_ERROR_LOG
+              value: "/dev/stderr"
+            - name: KONG_ADMIN_LISTEN
+              value: "127.0.0.1:8001"
+            - name: KONG_STATUS_LISTEN
+              value: "0.0.0.0:8100"
+            - name: KONG_PROXY_LISTEN
+              value: "0.0.0.0:8000, 0.0.0.0:8443 ssl http2"
+            - name: KONG_NGINX_WORKER_PROCESSES
+              value: "2"
+          ports:
+            - name: proxy
+              containerPort: 8000
+              protocol: TCP
+            - name: proxy-ssl
+              containerPort: 8443
+              protocol: TCP
+            - name: metrics
+              containerPort: 8100
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /status/ready
+              port: 8100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: 8100
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+              ephemeral-storage: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            {{- if not (or .Values.global.openshift (and .Values.openshift .Values.openshift.enabled)) }}
+            runAsUser: 10001
+            runAsGroup: 10001
+            {{- end }}
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: kong-declarative-volume
+              mountPath: /kong/declarative
+              readOnly: true
+            - name: kong-tmp
+              mountPath: /tmp
+      volumes:
+        - name: kong-declarative-volume
+          configMap:
+            name: kong-declarative-config
+        - name: kong-tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-proxy
+  namespace: {{ $ns }}
+  labels:
+    app: kong-gateway
+    app.kubernetes.io/name: kong-gateway
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+    - name: proxy-ssl
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
+    - name: status
+      port: 8100
+      targetPort: 8100
+      protocol: TCP
+  selector:
+    app: kong-gateway
+{{- end }}

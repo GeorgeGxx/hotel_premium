@@ -28,6 +28,31 @@ resource "google_sql_database_instance" "this" {
       query_insights_enabled  = true
       record_application_tags = true
     }
+
+    database_flags {
+      name  = "log_temp_files"
+      value = "0"
+    }
+
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_disconnections"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_lock_waits"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_checkpoints"
+      value = "on"
+    }
   }
 
   deletion_protection = var.deletion_protection

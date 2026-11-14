@@ -3,6 +3,14 @@ global:
   namespace: dev
   imagePullPolicy: IfNotPresent
 
+istio:
+  enabled: true
+  ingressSelector: ingressgateway
+  hosts:
+    - "*"
+  tls:
+    enabled: false
+
 autoscaling:
   enabled: false
 

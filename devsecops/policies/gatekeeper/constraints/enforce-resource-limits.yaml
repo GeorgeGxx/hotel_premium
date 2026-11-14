@@ -11,3 +11,5 @@ spec:
       - "dev"
       - "staging"
       - "prod"
+      - "hotel-staging"
+      - "hotel-prod"

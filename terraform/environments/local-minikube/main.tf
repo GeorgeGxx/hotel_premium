@@ -1,8 +1,9 @@
 # ==============================================================================
-# Namespaces: gatekeeper-system, observability, opencost, auth, data, vault, keda, dev
+# Namespaces: istio-system, gatekeeper-system, observability, opencost, auth, data, vault, keda, dev
 # ==============================================================================
 resource "kubernetes_namespace" "namespaces" {
   for_each = toset([
+    "istio-system",
     "gatekeeper-system",
     "observability",
     "opencost",
@@ -198,6 +199,76 @@ resource "helm_release" "opencost" {
     {
       name  = "opencost.prometheus.internal.port"
       value = "9090"
+    }
+  ]
+}
+
+# ==============================================================================
+# 6. Istio Service Mesh v1.31.2 (Base CRDs, Istiod Control Plane & Ingress Gateway)
+# ==============================================================================
+resource "helm_release" "istio_base" {
+  depends_on = [kubernetes_namespace.namespaces]
+
+  name       = "istio-base"
+  repository = "https://istio-release.storage.googleapis.com/charts"
+  chart      = "base"
+  version    = "1.31.2"
+  namespace  = "istio-system"
+  timeout    = 600
+}
+
+resource "helm_release" "istiod" {
+  depends_on = [helm_release.istio_base]
+
+  name       = "istiod"
+  repository = "https://istio-release.storage.googleapis.com/charts"
+  chart      = "istiod"
+  version    = "1.31.2"
+  namespace  = "istio-system"
+  timeout    = 600
+
+  set = [
+    {
+      name  = "meshConfig.accessLogFile"
+      value = "/dev/stdout"
+    },
+    {
+      name  = "meshConfig.enableTracing"
+      value = "true"
+    },
+    {
+      name  = "pilot.resources.requests.cpu"
+      value = "100m"
+    },
+    {
+      name  = "pilot.resources.requests.memory"
+      value = "256Mi"
+    }
+  ]
+}
+
+resource "helm_release" "istio_ingressgateway" {
+  depends_on = [helm_release.istiod]
+
+  name       = "istio-ingressgateway"
+  repository = "https://istio-release.storage.googleapis.com/charts"
+  chart      = "gateway"
+  version    = "1.31.2"
+  namespace  = "istio-system"
+  timeout    = 600
+
+  set = [
+    {
+      name  = "service.type"
+      value = "NodePort"
+    },
+    {
+      name  = "resources.requests.cpu"
+      value = "100m"
+    },
+    {
+      name  = "resources.requests.memory"
+      value = "128Mi"
     }
   ]
 }

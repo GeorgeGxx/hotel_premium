@@ -29,3 +29,27 @@ helm.sh/chart: {{ include "hotel-premium.name" . }}-{{ .Chart.Version | replace 
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: hotel-premium
 {{- end }}
+
+{{/*
+Resolve container image supporting global.imageRegistry, global.imagePrefix, and global.imageTag overrides from CI/CD
+*/}}
+{{- define "hotel-premium.serviceImage" -}}
+{{- $svc := .svc -}}
+{{- $global := .global -}}
+{{- $imgName := printf "hotel-%s" $svc.name -}}
+{{- if eq $svc.name "hotel-frontend" -}}
+{{- $imgName = "hotel-frontend" -}}
+{{- end -}}
+{{- $reg := ($global.imageRegistry | default "docker.io") -}}
+{{- $pref := ($global.imagePrefix | default "georgegxx") -}}
+{{- $tag := (toString ($global.imageTag | default "1.0.0")) -}}
+{{- if or (ne $reg "docker.io") (ne $pref "georgegxx") (ne $tag "1.0.0") -}}
+{{- if and $reg (ne $reg "") (ne $reg "docker.io") -}}
+{{- printf "%s/%s/%s:%s" $reg $pref $imgName $tag -}}
+{{- else -}}
+{{- printf "%s/%s:%s" $pref $imgName $tag -}}
+{{- end -}}
+{{- else -}}
+{{- $svc.image -}}
+{{- end -}}
+{{- end }}

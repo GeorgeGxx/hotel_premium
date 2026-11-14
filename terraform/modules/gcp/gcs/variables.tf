@@ -22,9 +22,9 @@ variable "versioning_enabled" {
 }
 
 variable "kms_key_id" {
-  description = "Optional Cloud KMS CryptoKey ID for Customer-Managed Encryption (CMEK)"
+  description = "Cloud KMS CryptoKey ID for Customer-Managed Encryption (CMEK)"
   type        = string
-  default     = null
+  default     = "projects/hotel-premium/locations/us-central1/keyRings/hotel-keyring/cryptoKeys/hotel-key"
 }
 
 variable "transition_to_nearline_days" {

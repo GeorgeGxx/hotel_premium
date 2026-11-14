@@ -1,17 +1,20 @@
 package http
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hotelpremium/backend/internal/application/saga"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/swagger"
+	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
@@ -284,6 +287,83 @@ func NewGinBillingEngine(billingHandler *handler.BillingHandler, redisClients ..
 	}
 
 	RegisterBillingRoutes(billingGroup, billingHandler)
+	return engine
+}
+
+// NewGinNotificationEngine builds the Gin v1.12.0 router for notification-worker (Kafka Consumer + DLQ + Telemetry)
+func NewGinNotificationEngine(
+	stayTopic string,
+	dlqManager *kafka.DLQManager,
+	processedEvents *atomic.Uint64,
+	deduplicatedEvents *atomic.Uint64,
+) *gin.Engine {
+	engine := NewGinBaseEngine("notification-worker")
+
+	allowedReplayTopics := map[string]bool{
+		stayTopic:                  true,
+		"hotel.stays.lifecycle.v1": true,
+		"hotel.stays.events":       true,
+		"hotel.billing.events":     true,
+	}
+
+	staffRoles := GinRBACMiddleware(RoleAdmin, RoleManager, RoleReceptionist, RoleUser)
+	adminRoles := GinRBACMiddleware(RoleAdmin, RoleManager)
+
+	notifHandler := func(c *gin.Context) {
+		var proc, dedup uint64
+		if processedEvents != nil {
+			proc = processedEvents.Load()
+		}
+		if deduplicatedEvents != nil {
+			dedup = deduplicatedEvents.Load()
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"service":             "notification-worker",
+			"status":              "ACTIVE",
+			"topic":               stayTopic,
+			"processed_events":    proc,
+			"deduplicated_events": dedup,
+		})
+	}
+	engine.GET("/api/v1/notifications", staffRoles, notifHandler)
+	engine.GET("/api/v1/notifications/", staffRoles, notifHandler)
+
+	engine.GET("/api/v1/dlq/events", adminRoles, func(c *gin.Context) {
+		if dlqManager == nil {
+			c.JSON(http.StatusOK, []interface{}{})
+			return
+		}
+		c.JSON(http.StatusOK, dlqManager.GetDLQEvents())
+	})
+
+	engine.POST("/api/v1/dlq/replay", adminRoles, func(c *gin.Context) {
+		var payload struct {
+			TargetTopic string `json:"target_topic"`
+			Key         string `json:"key"`
+			Value       string `json:"value"`
+		}
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+			return
+		}
+		if payload.TargetTopic == "" {
+			payload.TargetTopic = stayTopic
+		}
+		if !allowedReplayTopics[payload.TargetTopic] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "disallowed target_topic for DLQ replay"})
+			return
+		}
+		if dlqManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "dlq manager unavailable"})
+			return
+		}
+		if err := dlqManager.Replay(c.Request.Context(), payload.TargetTopic, []byte(payload.Key), []byte(payload.Value)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to replay: %s", err.Error())})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "REPLAYED", "target_topic": payload.TargetTopic})
+	})
+
 	return engine
 }
 

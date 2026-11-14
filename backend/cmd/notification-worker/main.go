@@ -17,11 +17,9 @@ import (
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
 	infraHttp "github.com/hotelpremium/backend/internal/infrastructure/http"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
-	"github.com/hotelpremium/backend/internal/infrastructure/http/swagger"
 	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/redis"
 	"github.com/hotelpremium/backend/internal/infrastructure/telemetry"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kafkaGo "github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -74,92 +72,12 @@ func main() {
 	dlqManager := kafka.NewDLQManager(cfg.KafkaBootstrapServers, cfg.KafkaStayTopic, 3, 500*time.Millisecond)
 	defer dlqManager.Close()
 
-	// Allowed Kafka topics for controlled DLQ replay (prevents arbitrary topic injection)
-	allowedReplayTopics := map[string]bool{
-		cfg.KafkaStayTopic:         true,
-		"hotel.stays.lifecycle.v1": true,
-		"hotel.stays.events":       true,
-		"hotel.billing.events":     true,
-	}
-
-	// 3. Metrics, Liveness & Readiness Endpoints
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"status":  "UP",
-			"service": "notification-worker",
-			"broker":  "Apache Kafka (KRaft)",
-			"topic":   cfg.KafkaStayTopic,
-			"dlq":     cfg.KafkaStayTopic + ".DLQ",
-		})
-	})
-	mux.HandleFunc("GET /healthz", handler.HealthCheck)
-	mux.HandleFunc("GET /api/v1/ready", handler.ReadinessCheck)
-	mux.HandleFunc("GET /readyz", handler.ReadinessCheck)
-
-	notifHandler := infraHttp.RequireRoleHTTP(
-		[]string{infraHttp.RoleAdmin, infraHttp.RoleManager, infraHttp.RoleReceptionist, infraHttp.RoleUser},
-		func(w http.ResponseWriter, r *http.Request) {
-			ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-			if telemetry.Tracer != nil {
-				var span trace.Span
-				_, span = telemetry.Tracer.Start(ctx, "notification-worker: GET /api/v1/notifications",
-					trace.WithSpanKind(trace.SpanKindServer),
-				)
-				defer span.End()
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"service":             "notification-worker",
-				"status":              "ACTIVE",
-				"topic":               cfg.KafkaStayTopic,
-				"processed_events":    processedEvents.Load(),
-				"deduplicated_events": deduplicatedEvents.Load(),
-			})
-		},
-	)
-	mux.HandleFunc("GET /api/v1/notifications", notifHandler)
-	mux.HandleFunc("GET /api/v1/notifications/", notifHandler)
-
-	// SRE DLQ Inspection and Replay Endpoints (Strictly protected by ADMIN / MANAGER RBAC)
-	adminRoles := []string{infraHttp.RoleAdmin, infraHttp.RoleManager}
-	mux.HandleFunc("GET /api/v1/dlq/events", infraHttp.RequireRoleHTTP(adminRoles, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(dlqManager.GetDLQEvents())
-	}))
-
-	mux.HandleFunc("POST /api/v1/dlq/replay", infraHttp.RequireRoleHTTP(adminRoles, func(w http.ResponseWriter, r *http.Request) {
-		var payload struct {
-			TargetTopic string `json:"target_topic"`
-			Key         string `json:"key"`
-			Value       string `json:"value"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
-			return
-		}
-		if payload.TargetTopic == "" {
-			payload.TargetTopic = cfg.KafkaStayTopic
-		}
-		if !allowedReplayTopics[payload.TargetTopic] {
-			http.Error(w, `{"error":"disallowed target_topic for DLQ replay"}`, http.StatusBadRequest)
-			return
-		}
-		if err := dlqManager.Replay(r.Context(), payload.TargetTopic, []byte(payload.Key), []byte(payload.Value)); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"failed to replay: %s"}`, err.Error()), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "REPLAYED", "target_topic": payload.TargetTopic})
-	}))
-
-	mux.Handle("GET /metrics", promhttp.Handler())
-	swagger.RegisterSwaggerUIMux(mux, "notification-worker")
+	// 3. Gin v1.12.0 Engine (Metrics, Liveness, Readiness, DLQ & Notifications with unified RBAC/OTel/Logger)
+	engine := infraHttp.NewGinNotificationEngine(cfg.KafkaStayTopic, dlqManager, &processedEvents, &deduplicatedEvents)
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      mux,
+		Handler:      engine,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}

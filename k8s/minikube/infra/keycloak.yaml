@@ -31,12 +31,15 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.8.1
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -97,6 +100,16 @@ spec:
               port: 9000
             initialDelaySeconds: 10
             periodSeconds: 10
+          volumeMounts:
+            - name: keycloak-tmp
+              mountPath: /tmp
+            - name: keycloak-data
+              mountPath: /opt/keycloak/data
+      volumes:
+        - name: keycloak-tmp
+          emptyDir: {}
+        - name: keycloak-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -141,12 +154,15 @@ spec:
         runAsUser: 70
         runAsGroup: 70
         fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:18-alpine
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -157,6 +173,8 @@ spec:
               value: "keycloak_password_2026"
             - name: POSTGRES_DB
               value: "keycloak_db"
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
           ports:
             - name: postgres
               containerPort: 5432
@@ -187,6 +205,20 @@ spec:
                 - keycloak_db
             initialDelaySeconds: 15
             periodSeconds: 10
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+            - name: pg-run
+              mountPath: /var/run/postgresql
+            - name: pg-tmp
+              mountPath: /tmp
+      volumes:
+        - name: pg-data
+          emptyDir: {}
+        - name: pg-run
+          emptyDir: {}
+        - name: pg-tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

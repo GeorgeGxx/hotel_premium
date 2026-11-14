@@ -56,7 +56,7 @@ resource "google_compute_health_check" "http" {
 
   http_health_check {
     port         = 80
-    request_path = "/actuator/health"
+    request_path = "/api/v1/health"
   }
 }
 
@@ -92,7 +92,7 @@ resource "google_compute_backend_bucket" "static_frontend" {
 
 # URL Map with Dual-Origin Path Matcher:
 # - Default (/*): Points to GCS Bucket (Static React 19 Frontend) with Cloud CDN
-# - /graphql*, /api/* & /realms/*: Points to Backend Service (Istio ingress gateway on GKE) with Cloud Armor WAF
+# - /api/*, /auth/*, /realms/* & /resources/*: Points to Backend Service (Istio ingress gateway -> Kong v3.9.4 -> Gin REST APIs) with Cloud Armor WAF
 resource "google_compute_url_map" "this" {
   name = "${var.name}-${var.environment}-url-map"
 
@@ -108,7 +108,7 @@ resource "google_compute_url_map" "this" {
     default_service = var.gcs_bucket_name != "" ? google_compute_backend_bucket.static_frontend[0].id : google_compute_backend_service.api_backend.id
 
     path_rule {
-      paths   = ["/graphql*", "/api/*", "/realms/*"]
+      paths   = ["/api/*", "/auth/*", "/realms/*", "/resources/*"]
       service = google_compute_backend_service.api_backend.id
     }
   }

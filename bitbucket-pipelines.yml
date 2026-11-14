@@ -36,7 +36,8 @@ definitions:
             python3 -m pip install --no-cache-dir "semgrep==1.110.0"
             semgrep scan --config devsecops/sast/semgrep/semgrep-rules.yaml --severity ERROR --error backend frontend
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.76.0/contrib/install.sh | sh -s -- -b /usr/local/bin v0.76.0
-            trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform/environments/gcp terraform/modules/gcp
+            trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform
+            trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform/modules/gcp
             curl -sSfL https://raw.githubusercontent.com/terraform-linters/tflint/v0.64.0/install_linux.sh | TFLINT_VERSION=v0.64.0 bash
             tflint --init --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
             tflint --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
@@ -51,7 +52,7 @@ definitions:
             mkdir -p artifacts/images artifacts/sbom
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.76.0/contrib/install.sh | sh -s -- -b /usr/local/bin v0.76.0
             for SVC in room-service stay-service billing-service notification-worker; do
-              docker build --pull --build-arg SERVICE_NAME="$SVC" -t "local/hotel-${SVC}:${IMAGE_TAG}" -f backend/Dockerfile backend
+              docker build --pull --build-arg SERVICE="$SVC" -t "local/hotel-${SVC}:${IMAGE_TAG}" -f backend/Dockerfile backend
               docker save "local/hotel-${SVC}:${IMAGE_TAG}" -o "artifacts/images/hotel-${SVC}.tar"
               trivy image --input "artifacts/images/hotel-${SVC}.tar" --format cyclonedx --output "artifacts/sbom/hotel-${SVC}.cdx.json"
               trivy image --input "artifacts/images/hotel-${SVC}.tar" --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
@@ -126,6 +127,12 @@ definitions:
               --set "global.imageRegistry=${GCP_REGION:-us-central1}-docker.pkg.dev" \
               --set "global.imagePrefix=${GCP_PROJECT_ID}/hotel-premium" \
               --set "global.imageTag=${IMAGE_TAG}"
+            if [ -n "${TARGET_API_URL:-}" ]; then
+              echo "Running Post-Deploy QA (Newman API Contract, k6 Load Test & OWASP ZAP DAST)..."
+              docker run --rm -v "$PWD/tests/api/postman:/etc/newman" postman/newman:alpine run hotel_premium_collection.json --env-var "base_url=${TARGET_API_URL}"
+              docker run --rm -i -e BASE_URL="${TARGET_API_URL}" grafana/k6:latest run - < tests/performance/k6/booking_load_test.js
+              docker run --rm -v "$PWD/devsecops/dast/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t "${TARGET_API_URL}" -c rules.tsv -I
+            fi
 
 pipelines:
   pull-requests:
@@ -135,24 +142,6 @@ pipelines:
       - step: *policy-supplychain
       - step: *terraform-gcp
   branches:
-    develop:
-      - step: *unit-tests
-      - step: *sast-iac
-      - step: *build-sbom-scan
-      - step: *policy-supplychain
-      - step: *terraform-gcp
-      - step:
-          <<: *deploy-gke-verify
-          deployment: dev
-    staging:
-      - step: *unit-tests
-      - step: *sast-iac
-      - step: *build-sbom-scan
-      - step: *policy-supplychain
-      - step: *terraform-gcp
-      - step:
-          <<: *deploy-gke-verify
-          deployment: staging
     master:
       - step: *unit-tests
       - step: *sast-iac
@@ -161,5 +150,15 @@ pipelines:
       - step: *terraform-gcp
       - step:
           <<: *deploy-gke-verify
+          name: '6a. Deploy to GKE Dev & Post-Deploy QA'
+          deployment: dev
+      - step:
+          <<: *deploy-gke-verify
+          name: '6b. Promote to GKE Staging & Post-Deploy QA'
+          deployment: staging
+          trigger: manual
+      - step:
+          <<: *deploy-gke-verify
+          name: '6c. Promote to GKE Production & Post-Deploy QA'
           deployment: production
           trigger: manual

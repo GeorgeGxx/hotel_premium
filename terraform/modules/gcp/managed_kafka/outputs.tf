@@ -1,17 +1,17 @@
 output "topic_name" {
-  value = google_pubsub_topic.orders.name
+  value = google_pubsub_topic.stays_lifecycle.name
 }
 
 output "topic_id" {
-  value = google_pubsub_topic.orders.id
+  value = google_pubsub_topic.stays_lifecycle.id
 }
 
 output "subscription_name" {
-  value = google_pubsub_subscription.orders_sub.name
+  value = google_pubsub_subscription.stays_lifecycle_sub.name
 }
 
 output "subscription_id" {
-  value = google_pubsub_subscription.orders_sub.id
+  value = google_pubsub_subscription.stays_lifecycle_sub.id
 }
 
 output "dead_letter_topic_name" {

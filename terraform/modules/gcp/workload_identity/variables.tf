@@ -14,13 +14,24 @@ variable "project_id" {
 variable "k8s_namespace" {
   description = "Kubernetes Namespace"
   type        = string
-  default     = "default"
+  default     = "dev"
 }
 
 variable "k8s_service_account" {
-  description = "Kubernetes Service Account Name"
+  description = "Primary Kubernetes Service Account Name"
   type        = string
-  default     = "backend-workload-identity"
+  default     = "stay-service-sa"
+}
+
+variable "k8s_service_accounts" {
+  description = "All Hotel Premium Kubernetes Service Accounts bound to Workload Identity"
+  type        = list(string)
+  default = [
+    "room-service-sa",
+    "stay-service-sa",
+    "billing-service-sa",
+    "notification-worker-sa"
+  ]
 }
 
 variable "roles" {

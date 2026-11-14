@@ -40,8 +40,8 @@ spec:
       - "registry.k8s.io"
       - "ghcr.io"
       - "quay.io"
-      - "public.ecr.aws"
-      - "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+      - "us-central1-docker.pkg.dev/"
+      - "docker.pkg.dev/"
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sDisallowRoot
@@ -54,3 +54,5 @@ spec:
         kinds: ["Pod"]
     namespaces:
       - "dev"
+      - "hotel-staging"
+      - "hotel-prod"
