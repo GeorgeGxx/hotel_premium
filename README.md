@@ -25,10 +25,10 @@ The complete visual architecture is maintained in **[`docs/Diagrams.drawio`](doc
 | **3** | `3. Event-Driven Outbox & DLQ` | Atomic SQL + `stay_outbox_events` commit, `FOR UPDATE SKIP LOCKED` relay, Kafka 8.3.2 KRaft partitions, and `notification-worker` Redis idempotency + DLQ fallback. |
 | **4** | `4. Zero-Trust Security & Vault PKI` | Keycloak 26.8.1 OIDC/RBAC, Kong Gateway hardening, Vault v2.2.0 Kubernetes Auth + Istio Root/Intermediate PKI CA (`cacerts`), and OPA Gatekeeper v3.23.0 admission control. |
 | **5** | `5. Helm 4 & Istio Canary Delivery` | Helm 4.3.1 `--server-side --wait=watcher` deployment, zero-downtime `RollingUpdate`, KEDA v2.21.0 autoscaling, and Istio `VirtualService` canary traffic splitting. |
-| **6** | `6. Cloudflare Edge & Tunnels` | Self-healing localhost port-forward supervisor (`127.0.0.1`) paired with Cloudflare Anycast HTTP/2 Quick Tunnels (`*.trycloudflare.com`) and GitHub Actions syncing. |
+| **6** | `6. Cloudflare Edge & Tunnels` | Self-healing localhost port-forward supervisor (`127.0.0.1`) paired with Cloudflare Anycast HTTP/2 Quick Tunnels (`*.trycloudflare.com`) and Bitbucket Pipelines verification. |
 | **7** | `7. 6-Gate Shift-Left DevSecOps` | Blocking pre-flight pipeline: Gitleaks 8.30.1, Semgrep SAST, TFLint 0.64.0, Trivy 0.76.0, Conftest 0.71.1 (205/205 Rego tests), and Sigstore Cosign v3.1.3 bundle verification. |
 | **8** | `8. LGTM Observability & FinOps` | W3C `traceparent` correlation across Alloy 1.21.0, Tempo 3.0.5, Loki 3.7.8, Prometheus v3.14.0, Grafana 13.2.3, OpenCost v2.5.32, and 7-day Prometheus FinOps right-sizing. |
-| **9** | `9. AWS Production Cloud (EKS)` | Multi-AZ Terraform 1.16.6 topology on Amazon EKS 1.37, RDS PostgreSQL 18 Multi-AZ, ElastiCache Redis 8.8, Amazon MSK Kafka, and KMS CMK encryption. |
+| **9** | `9. GCP Production Cloud (GKE)` | Multi-zone Terraform 1.16.6 topology on GKE Autopilot, Cloud SQL PostgreSQL 18, Memorystore Redis, Managed Kafka, Cloud Armor, and Workload Identity. |
 | **10** | `10. SRE Chaos, DDoS & BCDR` | GiST concurrency & idempotency chaos suite, edge anti-DDoS burst tester, Kafka outbox network partition drill, and PostgreSQL 18 PitR backup/restore verification. |
 | **11** | `11. Platform CLI Lifecycle` | 9-stage full `up` bootstrap and `<30s` 6-stage `start`/`resume` fast-recovery workflow in `platform-minikube.ps1`. |
 | **12** | `12. Data Model & ERD` | Physical PostgreSQL 18 schema (`rooms`, `stays` with `btree_gist`, `stay_outbox_events`, `billing_charges`, `audit_logs`) and Redis 8.8.1 keyspace design. |
@@ -109,7 +109,7 @@ The entire platform lifecycle—from 6-Gate Shift-Left security verification and
 # Run deep LGTM observability & OpenAPI Swagger diagnostics:
 .\platform-minikube.ps1 diagnose
 
-# Run AWS FinOps cost estimation & Prometheus 7-day CPU/Memory right-sizing:
+# Run GCP FinOps cost estimation & Prometheus 7-day CPU/Memory right-sizing:
 .\platform-minikube.ps1 cost
 .\platform-minikube.ps1 finops-rightsize
 ```
@@ -122,11 +122,11 @@ The entire platform lifecycle—from 6-Gate Shift-Left security verification and
 - **[`docs/Diagrams.drawio`](docs/Diagrams.drawio)** — 12-tab visual architecture blueprint (open in Draw.io / diagrams.net or VS Code Draw.io extension).
 - **Architecture Deep-Dives (`docs/architecture/`)**:
   - [`current-state.md`](docs/architecture/current-state.md) — Current baseline architecture and verified runtime metrics.
-  - [`target-state.md`](docs/architecture/target-state.md) — Cloud-native target state across Minikube and AWS EKS.
+  - [`target-state.md`](docs/architecture/target-state.md) — Cloud-native target state across Minikube and GCP GKE.
   - [`architecture-decisions.md`](docs/architecture/architecture-decisions.md) — Architectural Decision Records (ADRs 001–010).
   - [`technical-debt.md`](docs/architecture/technical-debt.md) — Remediated technical debt register and ongoing roadmap.
 - **Development, Deployment, Security & Operations**:
   - [`docs/development/local-development.md`](docs/development/local-development.md) — Local development with Go 1.26, Node 22, Docker Compose, and `platform-minikube.ps1`.
-  - [`docs/deployment/deployment-strategy.md`](docs/deployment/deployment-strategy.md) — Helm 4.3.1 Server-Side Apply, Istio progressive canary delivery, and GitHub Actions CI/CD.
+  - [`docs/deployment/deployment-strategy.md`](docs/deployment/deployment-strategy.md) — Helm 4.3.1 Server-Side Apply, Istio progressive canary delivery, and Bitbucket Pipelines CI/CD (GCP/GKE).
   - [`docs/security/security-assessment.md`](docs/security/security-assessment.md) — STRIDE threat model, 6-Gate Shift-Left DevSecOps, Vault PKI CA, and Cosign supply-chain security.
   - [`docs/operations/runbooks.md`](docs/operations/runbooks.md) — Production & Minikube SRE runbooks, chaos drills, FinOps right-sizing, and BCDR procedures.

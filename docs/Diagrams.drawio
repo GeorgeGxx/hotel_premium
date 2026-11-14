@@ -340,7 +340,7 @@
         <mxCell id="g2" parent="1" value="&lt;b&gt;Gate 2: Semgrep SAST&lt;/b&gt;&lt;br&gt;Go, TypeScript &amp;amp; Python&lt;br&gt;&lt;code&gt;0 ERROR findings&lt;/code&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;fontColor=#1E3A8A;fontSize=11;" vertex="1">
           <mxGeometry x="350" y="140" width="260" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="g3" parent="1" value="&lt;b&gt;Gate 3: TFLint 0.64.0&lt;/b&gt;&lt;br&gt;Minikube &amp;amp; AWS Terraform&lt;br&gt;&lt;code&gt;0 warnings&lt;/code&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;fontColor=#312E81;fontSize=11;" vertex="1">
+        <mxCell id="g3" parent="1" value="&lt;b&gt;Gate 3: TFLint 0.64.0&lt;/b&gt;&lt;br&gt;Minikube &amp;amp; GCP Terraform&lt;br&gt;&lt;code&gt;0 warnings&lt;/code&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;fontColor=#312E81;fontSize=11;" vertex="1">
           <mxGeometry x="640" y="140" width="260" height="100" as="geometry" />
         </mxCell>
         <mxCell id="g4" parent="1" value="&lt;b&gt;Gate 4: Trivy 0.76.0&lt;/b&gt;&lt;br&gt;Vuln, Misconfig, Secret, SBOM&lt;br&gt;&lt;code&gt;0 HIGH/CRITICAL&lt;/code&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=2;fontColor=#78350F;fontSize=11;" vertex="1">
@@ -378,18 +378,18 @@
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="page_10_aws_cloud" name="10. AWS Production Cloud Architecture (EKS)">
+  <diagram id="page_10_gcp_cloud" name="10. GCP Production Cloud Architecture (GKE)">
     <mxGraphModel dx="2000" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="p10_title" parent="1" value="&lt;b style='font-size:22px;color:#1E293B;'&gt;AWS PRODUCTION CLOUD ARCHITECTURE — AMAZON EKS, RDS POSTGRESQL 18, ELASTICACHE &amp;amp; MSK&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:13px;color:#64748B;'&gt;Terraform v1.16.6 IaC • Private VPC Endpoints • IMDSv2 Enforced • Customer-Managed KMS • Trivy AWS-0040/0041/0104 Clean&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;rounded=0;" vertex="1">
+        <mxCell id="p10_title" parent="1" value="&lt;b style='font-size:22px;color:#1E293B;'&gt;GCP PRODUCTION CLOUD ARCHITECTURE — GKE AUTOPILOT, CLOUD SQL 18, MEMORYSTORE &amp;amp; MANAGED KAFKA&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:13px;color:#64748B;'&gt;Terraform v1.16.6 IaC (terraform/environments/gcp/) • Bitbucket Pipelines CI/CD • Cloud Armor + CDN • Workload Identity&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;rounded=0;" vertex="1">
           <mxGeometry x="140" y="30" width="1640" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="p10_vpc" parent="1" value="&lt;b&gt;AWS Multi-AZ VPC (10.0.0.0/16) — Hardened Network Perimeter&lt;/b&gt;&lt;br&gt;• EKS API Server: &lt;code&gt;endpoint_public_access = false&lt;/code&gt;, &lt;code&gt;endpoint_private_access = true&lt;/code&gt;, &lt;code&gt;public_access_cidrs = [var.vpc_cidr]&lt;/code&gt;&lt;br&gt;• EKS Worker Nodes Security Group: Egress strictly scoped to &lt;code&gt;[var.vpc_cidr]&lt;/code&gt; (Zero unrestricted 0.0.0.0/0 egress)&lt;br&gt;• EC2 Launch Template: &lt;code&gt;http_tokens = required&lt;/code&gt; (IMDSv2 mandatory) + KMS-encrypted GP3 EBS volumes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;fontColor=#312E81;fontSize=11;" vertex="1">
+        <mxCell id="p10_vpc" parent="1" value="&lt;b&gt;GCP VPC &amp;amp; Edge Security Perimeter&lt;/b&gt;&lt;br&gt;• GKE Autopilot (dev, staging, prod dual-dataplane DP1/DP2) with private nodes &amp;amp; Cloud NAT&lt;br&gt;• Cloud Armor WAF + Cloud CDN + Global Load Balancer + Cloud DNS&lt;br&gt;• Google Artifact Registry (GAR) + Bitbucket Pipelines Helm Deploy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;fontColor=#312E81;fontSize=11;" vertex="1">
           <mxGeometry x="80" y="130" width="820" height="200" as="geometry" />
         </mxCell>
-        <mxCell id="p10_data" parent="1" value="&lt;b&gt;Managed AWS Data &amp;amp; Security Tier (Private Subnets)&lt;/b&gt;&lt;br&gt;• &lt;b&gt;Amazon RDS PostgreSQL 18:&lt;/b&gt; Multi-AZ, KMS encrypted at rest, automated backups &amp;amp; PitR&lt;br&gt;• &lt;b&gt;Amazon ElastiCache Redis 8.8.1:&lt;/b&gt; Multi-AZ Replication Group, transit &amp;amp; at-rest encryption&lt;br&gt;• &lt;b&gt;Amazon MSK (Apache Kafka):&lt;/b&gt; 3-AZ broker cluster with TLS encryption&lt;br&gt;• &lt;b&gt;AWS KMS &amp;amp; IAM OIDC:&lt;/b&gt; Automatic key rotation + Keyless GitHub Actions OIDC deployer role" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;fontColor=#064E3B;fontSize=11;" vertex="1">
+        <mxCell id="p10_data" parent="1" value="&lt;b&gt;Managed GCP Data &amp;amp; Security Tier (Private VPC)&lt;/b&gt;&lt;br&gt;• &lt;b&gt;Cloud SQL PostgreSQL 18:&lt;/b&gt; Regional HA, CMEK encrypted, automated backups &amp;amp; PitR&lt;br&gt;• &lt;b&gt;Cloud Memorystore for Redis:&lt;/b&gt; Regional HA, transit &amp;amp; at-rest encryption&lt;br&gt;• &lt;b&gt;Google Managed Kafka:&lt;/b&gt; Multi-zone broker cluster with TLS encryption&lt;br&gt;• &lt;b&gt;Cloud KMS, GCS &amp;amp; Workload Identity:&lt;/b&gt; GSA-to-KSA federation + Cloud Monitoring" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;fontColor=#064E3B;fontSize=11;" vertex="1">
           <mxGeometry x="960" y="130" width="840" height="200" as="geometry" />
         </mxCell>
       </root>

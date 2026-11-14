@@ -188,7 +188,7 @@ The repository includes a 12-tab Draw.io architecture suite at **[`docs/Diagrams
 6. **`6. Cloudflare Edge & Tunnels`** — Self-healing localhost port-forward supervisor paired with `cloudflared` Anycast HTTP/2 Quick Tunnels (`*.trycloudflare.com`).
 7. **`7. 6-Gate Shift-Left DevSecOps`** — Gitleaks, Semgrep SAST, TFLint, Trivy, Conftest (205 Rego tests), and Sigstore Cosign v3.1.3 verification flow.
 8. **`8. LGTM Observability & FinOps`** — W3C `traceparent` pipeline across Alloy 1.21.0, Tempo 3.0.5, Loki 3.7.8, Prometheus v3.14.0, Grafana 13.2.3, and OpenCost v2.5.32.
-9. **`9. AWS Production Cloud (EKS)`** — Multi-AZ Terraform 1.16.6 architecture on Amazon EKS 1.37, RDS PostgreSQL 18, ElastiCache Redis 8.8, Amazon MSK, and AWS KMS.
+9. **`9. GCP Production Cloud (GKE)`** — Multi-zone Terraform 1.16.6 architecture on GKE Autopilot, Cloud SQL PostgreSQL 18, Memorystore Redis, Managed Kafka, Cloud Armor, and Workload Identity.
 10. **`10. SRE Chaos, DDoS & BCDR`** — Concurrent GiST & idempotency chaos testing, edge anti-DDoS flood probes, Kafka outbox resilience drills, and PostgreSQL 18 PitR BCDR.
 11. **`11. Platform CLI Lifecycle`** — 9-stage full `up` bootstrap and `<30s` 6-stage `start`/`resume` fast-recovery workflow in `platform-minikube.ps1`.
 12. **`12. Data Model & ERD`** — Physical PostgreSQL 18 relational schema and Redis 8.8.1 keyspace layout.

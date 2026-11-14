@@ -234,7 +234,7 @@ def build_drawio_xml() -> bytes:
     add_node(p8, "p8_title", "1", "<b style='font-size:22px;color:#1E293B;'>6-GATE SHIFT-LEFT DEVSECOPS &amp; HELM 4.3.1 DELIVERY PIPELINE</b><br><span style='font-size:13px;color:#64748B;'>Zero soft-fails • Gitleaks 8.30.1 • Semgrep SAST • TFLint 0.64.0 • Trivy 0.76.0 • Conftest 0.71.1 (205/205) • Cosign v3.1.3 • Helm 4.3.1 SSA</span>", title_style, 160, 30, 1600, 50)
     add_node(p8, "g1", "1", "<b>Gate 1: Gitleaks 8.30.1</b><br>Isolated Git-tracked scan<br><code>0 secret leaks</code>", blue_box, 60, 140, 260, 100)
     add_node(p8, "g2", "1", "<b>Gate 2: Semgrep SAST</b><br>Go, TypeScript &amp; Python<br><code>0 ERROR findings</code>", blue_box, 350, 140, 260, 100)
-    add_node(p8, "g3", "1", "<b>Gate 3: TFLint 0.64.0</b><br>Minikube &amp; AWS Terraform<br><code>0 warnings</code>", indigo_box, 640, 140, 260, 100)
+    add_node(p8, "g3", "1", "<b>Gate 3: TFLint 0.64.0</b><br>Minikube &amp; GCP Terraform<br><code>0 warnings</code>", indigo_box, 640, 140, 260, 100)
     add_node(p8, "g4", "1", "<b>Gate 4: Trivy 0.76.0</b><br>Vuln, Misconfig, Secret, SBOM<br><code>0 HIGH/CRITICAL</code>", amber_box, 930, 140, 260, 100)
     add_node(p8, "g5", "1", "<b>Gate 5: Conftest 0.71.1</b><br>Static + Helm 4.3.1 Rendered<br><code>205/205 Rego passed</code>", green_box, 1220, 140, 280, 100)
     add_node(p8, "g6", "1", "<b>Gate 6: Cosign v3.1.3</b><br>ECDSA P-256 Sigstore Bundle<br><code>Verified OK</code>", purple_box, 1530, 140, 310, 100)
@@ -250,12 +250,12 @@ def build_drawio_xml() -> bytes:
     add_edge(p9, "p9_e1", "1", "Exposes Local Ports to Cloudflare Edge", edge_blue, "p9_local", "p9_cf")
 
     # =========================================================================
-    # TAB 10: AWS Production Cloud Architecture (EKS, RDS 18, Redis, MSK)
+    # TAB 10: GCP Production Cloud Architecture (GKE, Cloud SQL 18, Memorystore, Managed Kafka)
     # =========================================================================
-    p10 = create_page("page_10_aws_cloud", "10. AWS Production Cloud Architecture (EKS)")
-    add_node(p10, "p10_title", "1", "<b style='font-size:22px;color:#1E293B;'>AWS PRODUCTION CLOUD ARCHITECTURE — AMAZON EKS, RDS POSTGRESQL 18, ELASTICACHE &amp; MSK</b><br><span style='font-size:13px;color:#64748B;'>Terraform v1.16.6 IaC • Private VPC Endpoints • IMDSv2 Enforced • Customer-Managed KMS • Trivy AWS-0040/0041/0104 Clean</span>", title_style, 140, 30, 1640, 50)
-    add_node(p10, "p10_vpc", "1", "<b>AWS Multi-AZ VPC (10.0.0.0/16) — Hardened Network Perimeter</b><br>• EKS API Server: <code>endpoint_public_access = false</code>, <code>endpoint_private_access = true</code>, <code>public_access_cidrs = [var.vpc_cidr]</code><br>• EKS Worker Nodes Security Group: Egress strictly scoped to <code>[var.vpc_cidr]</code> (Zero unrestricted 0.0.0.0/0 egress)<br>• EC2 Launch Template: <code>http_tokens = required</code> (IMDSv2 mandatory) + KMS-encrypted GP3 EBS volumes", indigo_box, 80, 130, 820, 200)
-    add_node(p10, "p10_data", "1", "<b>Managed AWS Data &amp; Security Tier (Private Subnets)</b><br>• <b>Amazon RDS PostgreSQL 18:</b> Multi-AZ, KMS encrypted at rest, automated backups &amp; PitR<br>• <b>Amazon ElastiCache Redis 8.8.1:</b> Multi-AZ Replication Group, transit &amp; at-rest encryption<br>• <b>Amazon MSK (Apache Kafka):</b> 3-AZ broker cluster with TLS encryption<br>• <b>AWS KMS &amp; IAM OIDC:</b> Automatic key rotation + Keyless GitHub Actions OIDC deployer role", green_box, 960, 130, 840, 200)
+    p10 = create_page("page_10_gcp_cloud", "10. GCP Production Cloud Architecture (GKE)")
+    add_node(p10, "p10_title", "1", "<b style='font-size:22px;color:#1E293B;'>GCP PRODUCTION CLOUD ARCHITECTURE — GKE AUTOPILOT, CLOUD SQL 18, MEMORYSTORE &amp; MANAGED KAFKA</b><br><span style='font-size:13px;color:#64748B;'>Terraform v1.16.6 IaC (terraform/environments/gcp/) • Bitbucket Pipelines CI/CD • Cloud Armor + CDN • Workload Identity</span>", title_style, 140, 30, 1640, 50)
+    add_node(p10, "p10_vpc", "1", "<b>GCP VPC &amp; Edge Security Perimeter</b><br>• GKE Autopilot (dev, staging, prod dual-dataplane DP1/DP2) with private nodes &amp; Cloud NAT<br>• Cloud Armor WAF + Cloud CDN + Global Load Balancer + Cloud DNS<br>• Google Artifact Registry (GAR) + Bitbucket Pipelines Helm Deploy", indigo_box, 80, 130, 820, 200)
+    add_node(p10, "p10_data", "1", "<b>Managed GCP Data &amp; Security Tier (Private VPC)</b><br>• <b>Cloud SQL PostgreSQL 18:</b> Regional HA, CMEK encrypted, automated backups &amp; PitR<br>• <b>Cloud Memorystore for Redis:</b> Regional HA, transit &amp; at-rest encryption<br>• <b>Google Managed Kafka:</b> Multi-zone broker cluster with TLS encryption<br>• <b>Cloud KMS, GCS &amp; Workload Identity:</b> GSA-to-KSA federation + Cloud Monitoring", green_box, 960, 130, 840, 200)
 
     # =========================================================================
     # TAB 11: PostgreSQL 18 BCDR, PitR & Chaos Engineering Drills
