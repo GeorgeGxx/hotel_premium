@@ -1254,15 +1254,28 @@ function Sync-PlatformImagesIntoMinikube {
         $infraImages + $appImages
     }
 
-    $minikubeImages = & minikube image ls 2>$null
+    $minikubeImages = @(& minikube image ls 2>$null)
+    $loadCacheRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "hotel_premium\minikube-load-cache" } else { $null }
+    if ($loadCacheRoot) { New-Item -ItemType Directory -Path $loadCacheRoot -Force | Out-Null }
+
     foreach ($img in $targetImages) {
         $isApp = $appImages -contains $img
-        if (($ForceBuild -and $isApp) -or ($minikubeImages -notmatch [regex]::Escape($img))) {
-            $hasLocal = & docker images -q $img 2>$null
-            if ($hasLocal) {
-                Write-Host "  ▶ Caching $img into Minikube cache..." -ForegroundColor DarkGray
-                & minikube image load --overwrite=true $img 2>$null | Out-Null
-            }
+        $inMinikube = @($minikubeImages | Where-Object { $_ -match [regex]::Escape($img) }).Count -gt 0
+        $localImgId = (& docker image inspect --format '{{.Id}}' $img 2>$null | Select-Object -First 1)
+        if (-not $localImgId) { continue }
+        $localImgId = $localImgId.Trim()
+
+        $cacheFile = if ($loadCacheRoot) { Join-Path $loadCacheRoot ("$img.id" -replace '[^a-zA-Z0-9_.-]', '_') } else { $null }
+        $cachedId = if ($cacheFile -and (Test-Path -LiteralPath $cacheFile -PathType Leaf)) { (Get-Content -LiteralPath $cacheFile -Raw).Trim() } else { "" }
+
+        if (-not ($ForceBuild -and $isApp) -and $inMinikube -and $cachedId -eq $localImgId) {
+            continue
+        }
+
+        Write-Host "  ▶ Loading $img into Minikube containerd store..." -ForegroundColor DarkGray
+        & minikube image load --overwrite=true $img 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0 -and $cacheFile) {
+            Set-Content -LiteralPath $cacheFile -Value $localImgId -NoNewline
         }
     }
 }
@@ -1648,19 +1661,33 @@ function Invoke-MinikubeBootstrap {
         "georgegxx/hotel-notification-worker:1.0.0",
         "georgegxx/hotel-frontend:1.0.0"
     )
-    $missingAppImage = $false
-    foreach ($appImg in $appImages) {
-        $exists = & docker images -q $appImg 2>$null
-        if (-not $exists) { $missingAppImage = $true; break }
-    }
-
-    if ($BuildImages -or $missingAppImage) {
+    $minikubeImagesRaw = @(& minikube image ls 2>$null)
+    $composeServices = @("hotel-room-service", "hotel-stay-service", "hotel-billing-service", "hotel-notification-worker", "hotel-frontend")
+    if ($BuildImages) {
         Write-Host "  ▶ Building Hotel Premium images (georgegxx/hotel-*:1.0.0) via Docker Compose..." -ForegroundColor White
-        & docker compose build hotel-room-service hotel-stay-service hotel-billing-service hotel-notification-worker hotel-frontend
+        & docker compose build @composeServices
         if ($LASTEXITCODE -ne 0) {
             throw "Docker Compose image build failed."
         }
         Show-Success "Docker Compose images built cleanly."
+    } else {
+        $missingServices = @()
+        foreach ($svc in $composeServices) {
+            $expectedImg = "georgegxx/${svc}:1.0.0"
+            $hasLocal = & docker images -q $expectedImg 2>$null
+            $inMinikube = @($minikubeImagesRaw | Where-Object { $_ -match [regex]::Escape($expectedImg) }).Count -gt 0
+            if (-not $hasLocal -and -not $inMinikube) {
+                $missingServices += $svc
+            }
+        }
+        if ($missingServices.Count -gt 0) {
+            Write-Host "  ▶ Missing image(s) in Minikube & local Docker ($($missingServices -join ', ')); building automatically..." -ForegroundColor Yellow
+            & docker compose build @missingServices
+            if ($LASTEXITCODE -ne 0) {
+                throw "Automatic Docker Compose build failed for: $($missingServices -join ', ')."
+            }
+            Show-Success "Missing Hotel Premium images built cleanly."
+        }
     }
 
     # Synchronize microservice application images into Minikube cache
