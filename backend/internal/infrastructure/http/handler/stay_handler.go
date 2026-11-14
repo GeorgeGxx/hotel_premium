@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,11 +13,17 @@ import (
 )
 
 type StayHandler struct {
-	stayRepo stay.Repository
+	stayRepo    stay.Repository
+	broadcaster func(event string, data interface{})
 }
 
 func NewStayHandler(stayRepo stay.Repository) *StayHandler {
 	return &StayHandler{stayRepo: stayRepo}
+}
+
+func (h *StayHandler) WithBroadcaster(fn func(event string, data interface{})) *StayHandler {
+	h.broadcaster = fn
+	return h
 }
 
 func (h *StayHandler) ListStays(w http.ResponseWriter, r *http.Request) {
@@ -74,34 +82,52 @@ type CreateStayRequest struct {
 	Status         string  `json:"status"` // 'RESERVED' or 'ACTIVE'
 }
 
+func parseFlexibleDate(raw string) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) == 10 {
+		return time.Parse("2006-01-02", trimmed)
+	}
+	return time.Parse(time.RFC3339, trimmed)
+}
+
 func ParseCreateStayInput(req CreateStayRequest) (stay.CreateStayInput, error) {
 	roomUUID, err := uuid.Parse(req.RoomID)
 	if err != nil {
 		return stay.CreateStayInput{}, errors.New("invalid room_id uuid")
 	}
 
-	// Parse Dates (supports YYYY-MM-DD or RFC3339)
-	var checkIn, checkOut time.Time
-	if len(req.CheckInDate) == 10 {
-		checkIn, err = time.Parse("2006-01-02", req.CheckInDate)
-	} else {
-		checkIn, err = time.Parse(time.RFC3339, req.CheckInDate)
+	if strings.TrimSpace(req.GuestName) == "" {
+		return stay.CreateStayInput{}, errors.New("guest_name is required")
 	}
-	if err != nil {
-		checkIn = time.Now().UTC()
+	if req.DepositAmount < 0 {
+		return stay.CreateStayInput{}, errors.New("deposit_amount cannot be negative")
 	}
 
-	if len(req.CheckOutDate) == 10 {
-		checkOut, err = time.Parse("2006-01-02", req.CheckOutDate)
+	var checkIn, checkOut time.Time
+	if strings.TrimSpace(req.CheckInDate) == "" {
+		checkIn = time.Now().UTC()
 	} else {
-		checkOut, err = time.Parse(time.RFC3339, req.CheckOutDate)
+		checkIn, err = parseFlexibleDate(req.CheckInDate)
+		if err != nil {
+			return stay.CreateStayInput{}, errors.New("invalid check_in_date format: must be YYYY-MM-DD or RFC3339")
+		}
 	}
-	if err != nil {
+
+	if strings.TrimSpace(req.CheckOutDate) == "" {
 		nights := req.TotalNights
 		if nights < 1 {
 			nights = 1
 		}
 		checkOut = checkIn.AddDate(0, 0, nights)
+	} else {
+		checkOut, err = parseFlexibleDate(req.CheckOutDate)
+		if err != nil {
+			return stay.CreateStayInput{}, errors.New("invalid check_out_date format: must be YYYY-MM-DD or RFC3339")
+		}
+	}
+
+	if !checkOut.After(checkIn) {
+		return stay.CreateStayInput{}, stay.ErrInvalidDateRange
 	}
 
 	if req.TotalNights < 1 {
@@ -111,23 +137,27 @@ func ParseCreateStayInput(req CreateStayRequest) (stay.CreateStayInput, error) {
 		}
 	}
 
-	stStatus := stay.Status(req.Status)
-	if stStatus == "" {
-		stStatus = stay.StatusReserved
+	stStatus := stay.Status(strings.ToUpper(strings.TrimSpace(req.Status)))
+	if stStatus != stay.StatusReserved && stStatus != stay.StatusActive {
+		if checkIn.After(time.Now().UTC().Add(2 * time.Hour)) {
+			stStatus = stay.StatusReserved
+		} else {
+			stStatus = stay.StatusActive
+		}
 	}
 
 	return stay.CreateStayInput{
 		RoomID:         roomUUID,
-		GuestName:      req.GuestName,
-		GuestEmail:     req.GuestEmail,
-		GuestPhone:     req.GuestPhone,
-		DocumentType:   req.DocumentType,
-		DocumentNumber: req.DocumentNumber,
+		GuestName:      strings.TrimSpace(req.GuestName),
+		GuestEmail:     strings.TrimSpace(req.GuestEmail),
+		GuestPhone:     strings.TrimSpace(req.GuestPhone),
+		DocumentType:   strings.TrimSpace(req.DocumentType),
+		DocumentNumber: strings.TrimSpace(req.DocumentNumber),
 		CheckInDate:    checkIn,
 		CheckOutDate:   checkOut,
 		TotalNights:    req.TotalNights,
-		NightlyRate:    req.NightlyRate,
-		DepositAmount:  req.DepositAmount,
+		NightlyRate:    stay.RoundCurrency(req.NightlyRate),
+		DepositAmount:  stay.RoundCurrency(req.DepositAmount),
 		Notes:          req.Notes,
 		Status:         stStatus,
 	}, nil
@@ -138,6 +168,10 @@ func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json request payload"}`, http.StatusBadRequest)
 		return
+	}
+
+	if strings.HasSuffix(r.URL.Path, "/check-in") && req.Status == "" {
+		req.Status = string(stay.StatusActive)
 	}
 
 	input, err := ParseCreateStayInput(req)
@@ -156,8 +190,20 @@ func (h *StayHandler) CreateStay(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		if errors.Is(err, stay.ErrRoomNotReadyForCheckIn) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
+	}
+
+	if h.broadcaster != nil {
+		h.broadcaster("stay_created", createdStay)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -190,26 +236,20 @@ func (h *StayHandler) UpdateStay(w http.ResponseWriter, r *http.Request) {
 
 	var input stay.UpdateStayInput
 	if req.CheckInDate != nil {
-		var t time.Time
-		if len(*req.CheckInDate) == 10 {
-			t, err = time.Parse("2006-01-02", *req.CheckInDate)
-		} else {
-			t, err = time.Parse(time.RFC3339, *req.CheckInDate)
+		t, err := parseFlexibleDate(*req.CheckInDate)
+		if err != nil {
+			http.Error(w, `{"error":"invalid check_in_date format"}`, http.StatusBadRequest)
+			return
 		}
-		if err == nil {
-			input.CheckInDate = &t
-		}
+		input.CheckInDate = &t
 	}
 	if req.CheckOutDate != nil {
-		var t time.Time
-		if len(*req.CheckOutDate) == 10 {
-			t, err = time.Parse("2006-01-02", *req.CheckOutDate)
-		} else {
-			t, err = time.Parse(time.RFC3339, *req.CheckOutDate)
+		t, err := parseFlexibleDate(*req.CheckOutDate)
+		if err != nil {
+			http.Error(w, `{"error":"invalid check_out_date format"}`, http.StatusBadRequest)
+			return
 		}
-		if err == nil {
-			input.CheckOutDate = &t
-		}
+		input.CheckOutDate = &t
 	}
 	input.TotalNights = req.TotalNights
 	input.NightlyRate = req.NightlyRate
@@ -226,8 +266,16 @@ func (h *StayHandler) UpdateStay(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		if errors.Is(err, stay.ErrStayNotFound) {
+			http.Error(w, `{"error":"reservation not found"}`, http.StatusNotFound)
+			return
+		}
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
+	}
+
+	if h.broadcaster != nil {
+		h.broadcaster("stay_updated", updatedStay)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -255,9 +303,19 @@ func (h *StayHandler) CancelStay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.broadcaster != nil {
+		h.broadcaster("stay_cancelled", map[string]string{"stay_id": id.String()})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"message": "reservation cancelled successfully"})
+}
+
+type CheckOutSettlementRequest struct {
+	DepositAmount *float64 `json:"deposit_amount,omitempty"`
+	PaymentStatus *string  `json:"payment_status,omitempty"`
+	Notes         *string  `json:"notes,omitempty"`
 }
 
 func (h *StayHandler) CheckOutStay(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +324,25 @@ func (h *StayHandler) CheckOutStay(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"error":"invalid stay id format"}`, http.StatusBadRequest)
 		return
+	}
+
+	// Optional folio settlement body before completing check-out
+	if r.Body != nil {
+		var settlement CheckOutSettlementRequest
+		if err := json.NewDecoder(r.Body).Decode(&settlement); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, `{"error":"invalid check-out settlement payload"}`, http.StatusBadRequest)
+			return
+		}
+		if settlement.DepositAmount != nil || settlement.Notes != nil {
+			_, err := h.stayRepo.Update(r.Context(), id, stay.UpdateStayInput{
+				DepositAmount: settlement.DepositAmount,
+				Notes:         settlement.Notes,
+			})
+			if err != nil && !errors.Is(err, stay.ErrStayNotFound) {
+				http.Error(w, `{"error":"failed to settle folio balance prior to check-out"}`, http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	if err := h.stayRepo.CheckOut(r.Context(), id); err != nil {
@@ -277,8 +354,20 @@ func (h *StayHandler) CheckOutStay(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"stay is not active or already checked out"}`, http.StatusConflict)
 			return
 		}
+		if errors.Is(err, stay.ErrOutstandingBalance) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
 		http.Error(w, `{"error":"failed to process check-out"}`, http.StatusInternalServerError)
 		return
+	}
+
+	if h.broadcaster != nil {
+		h.broadcaster("stay_checked_out", map[string]string{"stay_id": id.String()})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -33,6 +33,10 @@ import {
   updateRoomPrice,
   subscribeToLiveEvents,
 } from './services/api';
+import {
+  handleOidcRedirectCallback,
+  setActiveSessionRole,
+} from './services/auth';
 import { DollarSign, ExternalLink, ShieldCheck } from 'lucide-react';
 
 const ADMIN_USER: CurrentUser = {
@@ -90,8 +94,15 @@ const App: React.FC = () => {
   const [activeToastNotification, setActiveToastNotification] = useState<AppNotification | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
 
-  // Global Ctrl+K / Cmd+K listener
+  // Global Ctrl+K / Cmd+K listener and OIDC PKCE callback handler
   useEffect(() => {
+    handleOidcRedirectCallback().then((oidcUser) => {
+      if (oidcUser) {
+        setCurrentUser(oidcUser);
+        setActiveSessionRole(oidcUser.role);
+      }
+    });
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -190,12 +201,33 @@ const App: React.FC = () => {
           `Suite status transitioned to ${data.status} via real-time stream`,
           'HOUSEKEEPING'
         );
+      } else if (eventType === 'room_price_updated' && data?.room_id) {
+        setRooms((prev) =>
+          prev.map((r) =>
+            r.id === data.room_id ? { ...r, base_price: Number(data.base_price) } : r
+          )
+        );
+        addNotification(
+          'Room Rate Synchronized',
+          `Suite rate updated to $${Number(data.base_price).toFixed(2)} USD via real-time stream`,
+          'SYSTEM'
+        );
       } else if (eventType === 'stay_created' && data?.id) {
         setStays((prev) => [data, ...prev.filter((s) => s.id !== data.id)]);
         addNotification(
           'New VIP Reservation Stream',
           `Reservation confirmed for ${data.guest_name}`,
           'RESERVATION'
+        );
+      } else if (eventType === 'stay_updated' && data?.id) {
+        setStays((prev) => prev.map((s) => (s.id === data.id ? { ...s, ...data } : s)));
+      } else if (eventType === 'stay_cancelled' && data?.stay_id) {
+        setStays((prev) =>
+          prev.map((s) => (s.id === data.stay_id ? { ...s, status: 'CANCELLED' } : s))
+        );
+      } else if (eventType === 'stay_checked_out' && data?.stay_id) {
+        setStays((prev) =>
+          prev.map((s) => (s.id === data.stay_id ? { ...s, status: 'CHECKED_OUT' } : s))
         );
       }
     });
@@ -221,6 +253,7 @@ const App: React.FC = () => {
   const handleToggleRole = () => {
     if (currentUser.role === 'ADMIN') {
       setCurrentUser(BASIC_USER);
+      setActiveSessionRole('USER');
       addNotification(
         'Role Switched',
         'Switched to basic_user role (Front Desk & Reservations mode)',
@@ -228,6 +261,7 @@ const App: React.FC = () => {
       );
     } else {
       setCurrentUser(ADMIN_USER);
+      setActiveSessionRole('ADMIN');
       addNotification(
         'Role Switched',
         'Switched to admin_user role (Full Management Access)',
@@ -456,7 +490,7 @@ const App: React.FC = () => {
     id: string,
     settlement?: { deposit_amount: number; payment_status: 'PAID'; notes?: string }
   ) => {
-    await checkOutStay(id);
+    await checkOutStay(id, settlement);
     const target = stays.find((s) => s.id === id);
     if (target) {
       const matchingRoom = rooms.find(

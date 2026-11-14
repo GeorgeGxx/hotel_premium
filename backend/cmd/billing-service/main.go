@@ -51,21 +51,30 @@ func main() {
 		}()
 	}
 
-	// Redis 8.8.1 client for distributed Idempotency locking on Folio charges
+	// Redis client for distributed Idempotency locking on Folio charges
 	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
 	if err == nil && redisClient != nil {
 		defer redisClient.Close()
+		handler.RegisterReadinessCheck("redis", func(c context.Context) error {
+			return redisClient.Ping(c).Err()
+		})
 	}
 
 	// GORM v1.31.2 PostgreSQL initialization
 	gormDB, err := postgres.NewGormDB(ctx, cfg)
 	if err != nil {
 		slog.Error("GORM database connection initialization failed", "error", err)
+		if strings.EqualFold(cfg.AppEnv, "production") {
+			os.Exit(1)
+		}
 	}
 	if gormDB != nil {
 		sqlDB, err := gormDB.DB()
 		if err == nil && sqlDB != nil {
 			defer sqlDB.Close()
+			handler.RegisterReadinessCheck("postgres", func(c context.Context) error {
+				return sqlDB.PingContext(c)
+			})
 		}
 	}
 
@@ -80,7 +89,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      ginEngine,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 

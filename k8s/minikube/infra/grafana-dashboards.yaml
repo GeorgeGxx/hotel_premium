@@ -128,7 +128,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_revenue_adr_usd) or vector(145.50)",
+              "expr": "max(hotel_revenue_adr_usd)",
               "refId": "A"
             }
           ],
@@ -185,7 +185,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_revenue_revpar_usd) or vector(112.75)",
+              "expr": "max(hotel_revenue_revpar_usd)",
               "refId": "A"
             }
           ],
@@ -242,7 +242,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_revenue_trevpar_usd) or vector(138.40)",
+              "expr": "max(hotel_revenue_trevpar_usd)",
               "refId": "A"
             }
           ],
@@ -299,7 +299,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_kpi_los_nights) or vector(2.8)",
+              "expr": "max(hotel_kpi_los_nights)",
               "refId": "A"
             }
           ],
@@ -356,7 +356,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_kpi_cancellation_rate) or vector(4.2)",
+              "expr": "max(hotel_kpi_cancellation_rate)",
               "refId": "A"
             }
           ],
@@ -553,17 +553,17 @@ data:
           },
           "targets": [
             {
-              "expr": "max(hotel_folio_deposits_collected_usd) or vector(16450)",
+              "expr": "max(hotel_folio_deposits_collected_usd)",
               "legendFormat": "Deposits Collected (Paid)",
               "refId": "A"
             },
             {
-              "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+              "expr": "max(hotel_revenue_ancillary_usd)",
               "legendFormat": "Concierge & POS Ancillary",
               "refId": "B"
             },
             {
-              "expr": "max(hotel_folio_balance_pending_usd) or vector(7350)",
+              "expr": "max(hotel_folio_balance_pending_usd)",
               "legendFormat": "Pending Folio Receivables",
               "refId": "C"
             }
@@ -645,7 +645,7 @@ data:
               "refId": "A"
             },
             {
-              "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+              "expr": "max(hotel_revenue_ancillary_usd)",
               "legendFormat": "Concierge & Spa Ancillary",
               "refId": "B"
             }
@@ -964,7 +964,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(kong_http_requests_total[1m])) or vector(0)",
+              "expr": "sum(rate(kong_http_requests_total[1m]))",
               "refId": "A"
             }
           ],
@@ -1020,7 +1020,7 @@ data:
           },
           "targets": [
             {
-              "expr": "(sum(rate(kong_http_requests_total{code=~\"5..\"}[1m])) / (sum(rate(kong_http_requests_total[1m])) > 0) * 100) or vector(0)",
+              "expr": "(sum(rate(kong_http_requests_total{code=~\"5..\"}[1m])) / (sum(rate(kong_http_requests_total[1m])) > 0) * 100)",
               "refId": "A"
             }
           ],
@@ -1085,7 +1085,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(hotel_sse_active_clients) or vector(0)",
+              "expr": "sum(hotel_sse_active_clients)",
               "refId": "A"
             }
           ],
@@ -1144,17 +1144,17 @@ data:
           },
           "targets": [
             {
-              "expr": "(histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(1.8)",
+              "expr": "(histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0)",
               "legendFormat": "P50 Latency",
               "refId": "A"
             },
             {
-              "expr": "(histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(4.2)",
+              "expr": "(histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0)",
               "legendFormat": "P95 Latency",
               "refId": "B"
             },
             {
-              "expr": "(histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0) or vector(8.6)",
+              "expr": "(histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) >= 0)",
               "legendFormat": "P99 Latency",
               "refId": "C"
             }
@@ -1261,7 +1261,7 @@ data:
           },
           "targets": [
             {
-              "expr": "(histogram_quantile(0.95, sum by (le, service) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))) >= 0) or vector(0.004)",
+              "expr": "(histogram_quantile(0.95, sum by (le, service) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))) >= 0)",
               "legendFormat": "P95 {{service}}",
               "refId": "A"
             }
@@ -1369,7 +1369,7 @@ data:
           },
           "targets": [
             {
-              "expr": "max(kafka_brokers) or vector(1)",
+              "expr": "max(kafka_brokers)",
               "refId": "A"
             }
           ],
@@ -1424,7 +1424,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(kafka_topic_partition_under_replicated_partition) or vector(0)",
+              "expr": "sum(kafka_topic_partition_under_replicated_partition)",
               "refId": "A"
             }
           ],
@@ -1526,12 +1526,12 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(kafka_consumer_retries_total) or vector(0)",
+              "expr": "sum(kafka_consumer_retries_total)",
               "legendFormat": "Backoff Retries",
               "refId": "A"
             },
             {
-              "expr": "sum(kafka_messages_dlq_total) or vector(0)",
+              "expr": "sum(kafka_messages_dlq_total)",
               "legendFormat": "Poison-Pill DLQ",
               "refId": "B"
             }
@@ -1653,7 +1653,7 @@ data:
           },
           "targets": [
             {
-              "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])), 0.0001)) * 100 or vector(99.4)",
+              "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])), 0.0001)) * 100",
               "refId": "A"
             }
           ],
@@ -1716,7 +1716,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(redis_commands_processed_total[1m])) or vector(1.5)",
+              "expr": "sum(rate(redis_commands_processed_total[1m]))",
               "refId": "A"
             }
           ],
@@ -1768,7 +1768,7 @@ data:
           },
           "targets": [
             {
-              "expr": "((sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)) * 100) > 0 or vector(96.8)",
+              "expr": "((sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)) * 100) > 0",
               "refId": "A"
             }
           ],

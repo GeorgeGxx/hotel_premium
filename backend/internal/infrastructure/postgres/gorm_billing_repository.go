@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hotelpremium/backend/internal/domain/billing"
+	"github.com/hotelpremium/backend/internal/domain/stay"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +41,7 @@ func (r *GormBillingRepository) GetActiveShift(ctx context.Context, userID uuid.
 
 	var diff *float64
 	if m.ActualClosingAmount != nil && m.ClosingAmount != nil {
-		d := *m.ActualClosingAmount - *m.ClosingAmount
+		d := stay.RoundCurrency(*m.ActualClosingAmount - *m.ClosingAmount)
 		diff = &d
 	}
 
@@ -62,13 +64,17 @@ func (r *GormBillingRepository) OpenShift(ctx context.Context, userID uuid.UUID,
 	if r.db == nil {
 		return nil, errors.New("database connection unavailable")
 	}
+	if openingAmount < 0 {
+		return nil, billing.ErrInvalidAmount
+	}
 
 	now := time.Now().UTC()
+	roundedOpening := stay.RoundCurrency(openingAmount)
 	m := CashShiftModel{
 		ID:            uuid.New(),
 		UserID:        userID,
 		OpenedAt:      now,
-		OpeningAmount: openingAmount,
+		OpeningAmount: roundedOpening,
 		Status:        string(billing.ShiftOpen),
 		Notes:         notes,
 		CreatedAt:     now,
@@ -93,9 +99,15 @@ func (r *GormBillingRepository) CloseShift(ctx context.Context, shiftID uuid.UUI
 	if r.db == nil {
 		return nil, errors.New("database connection unavailable")
 	}
+	if actualAmount < 0 {
+		return nil, billing.ErrInvalidAmount
+	}
 
 	now := time.Now().UTC()
+	roundedActual := stay.RoundCurrency(actualAmount)
 	var m CashShiftModel
+	var diff float64
+
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&m, "id = ?", shiftID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -105,12 +117,23 @@ func (r *GormBillingRepository) CloseShift(ctx context.Context, shiftID uuid.UUI
 		}
 
 		if m.Status == string(billing.ShiftClosed) {
-			return errors.New("cash shift is already closed")
+			return billing.ErrShiftAlreadyClosed
 		}
 
+		// Calculate expected closing amount from opening amount + charges recorded during the shift window
+		var shiftChargesTotal float64
+		_ = tx.Raw(`
+			SELECT COALESCE(SUM(total_price), 0)
+			FROM stay_charges
+			WHERE created_at >= ? AND created_at <= ?
+		`, m.OpenedAt, now).Row().Scan(&shiftChargesTotal)
+
+		expectedClosing := stay.RoundCurrency(m.OpeningAmount + shiftChargesTotal)
+		diff = stay.RoundCurrency(roundedActual - expectedClosing)
+
 		m.ClosedAt = &now
-		m.ActualClosingAmount = &actualAmount
-		m.ClosingAmount = &actualAmount
+		m.ClosingAmount = &expectedClosing
+		m.ActualClosingAmount = &roundedActual
 		m.Status = string(billing.ShiftClosed)
 		if notes != "" {
 			m.Notes = notes
@@ -123,7 +146,6 @@ func (r *GormBillingRepository) CloseShift(ctx context.Context, shiftID uuid.UUI
 		return nil, fmt.Errorf("gorm: failed to close cash shift: %w", err)
 	}
 
-	var diff float64 = 0.0
 	return &billing.CashShift{
 		ID:                  m.ID,
 		UserID:              m.UserID,
@@ -175,7 +197,7 @@ func (r *GormBillingRepository) FindProductByID(ctx context.Context, id uuid.UUI
 	var m ProductModel
 	if err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("product not found")
+			return nil, billing.ErrProductNotFound
 		}
 		return nil, fmt.Errorf("gorm: failed to find product: %w", err)
 	}
@@ -203,8 +225,8 @@ func (r *GormBillingRepository) CreateProduct(ctx context.Context, product *bill
 		SKU:          product.SKU,
 		Name:         product.Name,
 		Description:  product.Description,
-		CostPrice:    product.CostPrice,
-		SalePrice:    product.SalePrice,
+		CostPrice:    stay.RoundCurrency(product.CostPrice),
+		SalePrice:    stay.RoundCurrency(product.SalePrice),
 		CurrentStock: product.CurrentStock,
 		IsActive:     product.IsActive,
 		CreatedAt:    product.CreatedAt,
@@ -229,9 +251,12 @@ func (r *GormBillingRepository) ListChargesByStayID(ctx context.Context, stayID 
 		return nil, fmt.Errorf("gorm: failed to list charges: %w", err)
 	}
 
-	charges := make([]*billing.StayCharge, len(models))
-	for i, m := range models {
-		charges[i] = &billing.StayCharge{
+	charges := make([]*billing.StayCharge, 0, len(models))
+	for _, m := range models {
+		if strings.HasPrefix(m.Description, "Initial Stay Deposit") {
+			continue
+		}
+		charges = append(charges, &billing.StayCharge{
 			ID:          m.ID,
 			StayID:      m.StayID,
 			ProductID:   m.ProductID,
@@ -240,7 +265,7 @@ func (r *GormBillingRepository) ListChargesByStayID(ctx context.Context, stayID 
 			UnitPrice:   m.UnitPrice,
 			TotalPrice:  m.TotalPrice,
 			CreatedAt:   m.CreatedAt,
-		}
+		})
 	}
 
 	return charges, nil
@@ -250,9 +275,32 @@ func (r *GormBillingRepository) AddCharge(ctx context.Context, charge *billing.S
 	if r.db == nil {
 		return errors.New("database connection unavailable")
 	}
+	if charge.Quantity < 1 {
+		charge.Quantity = 1
+	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		totalPrice := float64(charge.Quantity) * charge.UnitPrice
+		// If ProductID is specified, enforce authoritative catalog price & stock availability
+		if charge.ProductID != nil && *charge.ProductID != uuid.Nil {
+			var prod ProductModel
+			if err := tx.Raw("SELECT id, name, sale_price, current_stock, is_active FROM products WHERE id = ? FOR UPDATE", *charge.ProductID).Scan(&prod).Error; err != nil || prod.ID == uuid.Nil {
+				return billing.ErrProductNotFound
+			}
+			if !prod.IsActive || prod.CurrentStock < charge.Quantity {
+				return billing.ErrInsufficientStock
+			}
+			charge.UnitPrice = stay.RoundCurrency(prod.SalePrice)
+			if strings.TrimSpace(charge.Description) == "" {
+				charge.Description = prod.Name
+			}
+		}
+
+		if charge.UnitPrice <= 0 {
+			return billing.ErrInvalidAmount
+		}
+
+		charge.UnitPrice = stay.RoundCurrency(charge.UnitPrice)
+		totalPrice := stay.RoundCurrency(float64(charge.Quantity) * charge.UnitPrice)
 		if charge.ID == uuid.Nil {
 			charge.ID = uuid.New()
 		}
@@ -276,9 +324,23 @@ func (r *GormBillingRepository) AddCharge(ctx context.Context, charge *billing.S
 			return fmt.Errorf("gorm: failed to insert stay charge: %w", err)
 		}
 
-		// Update total_amount on stay
-		if err := tx.Exec("UPDATE stays SET total_amount = total_amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", totalPrice, charge.StayID).Error; err != nil {
-			return fmt.Errorf("gorm: failed to update stay total amount: %w", err)
+		// Update total_amount and recalculate payment_status on stay (excluding deposit ledger records)
+		if !strings.HasPrefix(charge.Description, "Initial Stay Deposit") {
+			updateStayFolioSQL := `
+				UPDATE stays
+				SET 
+					total_amount = ROUND((total_amount + ?)::numeric, 2),
+					payment_status = CASE
+						WHEN deposit_amount >= ROUND((total_amount + ?)::numeric, 2) THEN 'PAID'
+						WHEN deposit_amount > 0 THEN 'PARTIAL'
+						ELSE 'PENDING'
+					END,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE id = ?
+			`
+			if err := tx.Exec(updateStayFolioSQL, totalPrice, totalPrice, charge.StayID).Error; err != nil {
+				return fmt.Errorf("gorm: failed to update stay total amount: %w", err)
+			}
 		}
 
 		// Deduct stock if product specified

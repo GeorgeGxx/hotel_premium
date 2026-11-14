@@ -166,3 +166,33 @@ func TestStay_CheckOut_Transitions(t *testing.T) {
 		t.Errorf("expected ErrStayAlreadyFinished, got: %v", err)
 	}
 }
+
+func TestStay_CheckOut_ZeroBalanceEnforcement(t *testing.T) {
+	unpaidStay := &stay.Stay{
+		ID:            uuid.New(),
+		Status:        stay.StatusActive,
+		TotalAmount:   450.00,
+		DepositAmount: 200.00,
+		PaymentStatus: stay.PaymentPartial,
+	}
+
+	if err := unpaidStay.CheckOut(); err != stay.ErrOutstandingBalance {
+		t.Fatalf("expected ErrOutstandingBalance for unpaid folio, got: %v", err)
+	}
+
+	unpaidStay.DepositAmount = 450.00
+	unpaidStay.PaymentStatus = stay.PaymentPaid
+	if err := unpaidStay.CheckOut(); err != nil {
+		t.Fatalf("expected checkout success after full folio settlement, got: %v", err)
+	}
+}
+
+func TestRoundCurrency_ExactCents(t *testing.T) {
+	val := 19.999
+	if got := stay.RoundCurrency(val); got != 20.00 {
+		t.Errorf("expected 20.00, got %f", got)
+	}
+	if cents := stay.ToCents(145.50); cents != 14550 {
+		t.Errorf("expected 14550 cents, got %d", cents)
+	}
+}

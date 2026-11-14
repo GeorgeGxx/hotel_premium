@@ -1,9 +1,13 @@
 name: AWS Cloud Deployment CD Pipeline
 
 on:
-  push:
+  workflow_run:
+    workflows: ["DevSecOps CI Pipeline"]
+    types:
+      - completed
     branches:
       - master
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -12,8 +16,9 @@ permissions:
 
 jobs:
   deploy-aws:
-    name: Build, Sign by Digest, Verify and Deploy to AWS EKS
+    name: Build, Scan, Sign by Digest, Verify and Deploy to AWS EKS
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     environment: production
     env:
       AWS_REGION: us-east-1
@@ -33,17 +38,17 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
 
-      - name: Install Cosign v3.1.3
+      - name: Install Cosign v2.4.1
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.8.1
         with:
-          cosign-release: "v3.1.3"
+          cosign-release: "v2.4.1"
 
-      - name: Setup Helm 4.3.1
+      - name: Setup Helm 3.17.1
         uses: azure/setup-helm@b7246b12e77f7134765036f376114e91300022cd # v4.3.0
         with:
-          version: "v4.3.1"
+          version: "v3.17.1"
 
-      - name: Build, Scan, Push & Sign Backend Microservices with Cosign
+      - name: Build, Trivy-Scan, Push & Sign Backend Microservices with Cosign
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: "1.0.0-${{ github.sha }}"
@@ -51,6 +56,7 @@ jobs:
           for SVC in room-service stay-service billing-service notification-worker; do
             IMAGE_URI="${REGISTRY}/hotel-${SVC}:${IMAGE_TAG}"
             docker build --build-arg SERVICE="${SVC}" -t "${IMAGE_URI}" ./backend
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH "${IMAGE_URI}"
             docker push "${IMAGE_URI}"
             DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_URI}")
             cosign sign --yes "${DIGEST}"
@@ -60,13 +66,14 @@ jobs:
               "${DIGEST}"
           done
 
-      - name: Build, Scan, Push & Sign Frontend Image with Cosign
+      - name: Build, Trivy-Scan, Push & Sign Frontend Image with Cosign
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: "1.0.0-${{ github.sha }}"
         run: |
           IMAGE_URI="${REGISTRY}/hotel-frontend:${IMAGE_TAG}"
           docker build --build-arg VITE_API_BASE_URL="/api/v1" -t "${IMAGE_URI}" ./frontend
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH "${IMAGE_URI}"
           docker push "${IMAGE_URI}"
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_URI}")
           cosign sign --yes "${DIGEST}"
@@ -92,13 +99,12 @@ jobs:
             --namespace "${NAMESPACE}" \
             --create-namespace \
             -f "k8s/helm/hotel-premium/values-${ENV_SHORT}.yaml" \
+            --set migrations.image="${REGISTRY}/hotel-stay-service:${IMAGE_TAG}" \
             --set services.roomService.image="${REGISTRY}/hotel-room-service:${IMAGE_TAG}" \
             --set services.stayService.image="${REGISTRY}/hotel-stay-service:${IMAGE_TAG}" \
             --set services.billingService.image="${REGISTRY}/hotel-billing-service:${IMAGE_TAG}" \
             --set services.notificationWorker.image="${REGISTRY}/hotel-notification-worker:${IMAGE_TAG}" \
             --set services.hotelFrontend.image="${REGISTRY}/hotel-frontend:${IMAGE_TAG}" \
-            --server-side=true \
-            --force-conflicts \
-            --rollback-on-failure \
-            --wait=watcher \
-            --timeout 5m
+            --atomic \
+            --wait \
+            --timeout 5m0s

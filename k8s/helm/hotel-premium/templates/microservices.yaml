@@ -1,3 +1,83 @@
+{{- $ns := .Values.global.namespace | default "dev" -}}
+{{- $secretName := (and .Values.secrets .Values.secrets.secretName) | default "hotel-app-secrets" -}}
+{{- if and .Values.migrations .Values.migrations.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hotel-db-migrator
+  namespace: {{ $ns }}
+  labels:
+    app: hotel-db-migrator
+    app.kubernetes.io/name: hotel-db-migrator
+    app.kubernetes.io/part-of: hotel-premium
+    {{- include "hotel-premium.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app: hotel-db-migrator
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        {{- if not (or .Values.global.openshift (and .Values.openshift .Values.openshift.enabled)) }}
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        {{- end }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-migrator
+          image: {{ .Values.migrations.image | default .Values.services.stayService.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          args: ["-migrate"]
+          env:
+            - name: APP_ENV
+              value: {{ .Values.services.stayService.env.APP_ENV | default "production" | quote }}
+            - name: DB_HOST
+              value: {{ .Values.services.stayService.env.DB_HOST | quote }}
+            - name: DB_PORT
+              value: {{ .Values.services.stayService.env.DB_PORT | quote }}
+            - name: DB_NAME
+              value: {{ .Values.services.stayService.env.DB_NAME | quote }}
+            - name: DB_USER
+              value: {{ .Values.services.stayService.env.DB_USER | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: DB_PASSWORD
+                  optional: true
+          resources:
+            limits:
+              cpu: 300m
+              memory: 256Mi
+              ephemeral-storage: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+              ephemeral-storage: 64Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+{{- end }}
 {{- range $key, $svc := .Values.services }}
 {{- if eq $svc.name "hotel-frontend" }}
 ---
@@ -5,7 +85,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hotel-frontend-config
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
   labels:
     app: {{ $svc.name }}
     app.kubernetes.io/name: {{ $svc.name }}
@@ -32,6 +112,7 @@ data:
         add_header X-XSS-Protection "1; mode=block" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 
         location / {
             try_files $uri $uri/ /index.html;
@@ -39,10 +120,10 @@ data:
 
         location /api/ {
             resolver 10.96.0.10 kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off;
-            set $upstream_gw "http://kong-proxy.dev.svc.cluster.local:8000";
+            set $upstream_gw "http://kong-proxy.{{ $ns }}.svc.cluster.local:8000";
             proxy_pass $upstream_gw;
             proxy_http_version 1.1;
-            proxy_set_header Host kong-proxy.dev.svc.cluster.local;
+            proxy_set_header Host kong-proxy.{{ $ns }}.svc.cluster.local;
             proxy_set_header X-Forwarded-Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -60,7 +141,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ $svc.name }}-sa
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
   labels:
     app: {{ $svc.name }}
     app.kubernetes.io/name: {{ $svc.name }}
@@ -71,7 +152,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $svc.name }}
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
   labels:
     app: {{ $svc.name }}
     app.kubernetes.io/name: {{ $svc.name }}
@@ -97,8 +178,26 @@ spec:
       serviceAccountName: {{ $svc.name }}-sa
       automountServiceAccountToken: false
       enableServiceLinks: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ $svc.name }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: {{ $svc.name }}
+                topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
         {{- if not (or $.Values.global.openshift (and $.Values.openshift $.Values.openshift.enabled)) }}
         {{- if eq $svc.name "hotel-frontend" }}
         runAsUser: 101
@@ -126,15 +225,39 @@ spec:
             - name: {{ $envKey }}
               value: {{ $envVal | quote }}
             {{- end }}
+            {{- if ne $svc.name "hotel-frontend" }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: DB_PASSWORD
+                  optional: true
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: JWT_SECRET
+                  optional: true
+            {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL
+          startupProbe:
+            httpGet:
+              path: {{ $svc.livenessPath }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: {{ $svc.readinessPath }}
@@ -151,8 +274,8 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 3
             failureThreshold: 3
-          {{- if eq $svc.name "hotel-frontend" }}
           volumeMounts:
+            {{- if eq $svc.name "hotel-frontend" }}
             - name: nginx-conf
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
@@ -160,9 +283,14 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
-          {{- end }}
-      {{- if eq $svc.name "hotel-frontend" }}
+            - name: app-tmp
+              mountPath: /tmp
+            {{- else }}
+            - name: app-tmp
+              mountPath: /tmp
+            {{- end }}
       volumes:
+        {{- if eq $svc.name "hotel-frontend" }}
         - name: nginx-conf
           configMap:
             name: hotel-frontend-config
@@ -170,13 +298,18 @@ spec:
           emptyDir: {}
         - name: nginx-run
           emptyDir: {}
-      {{- end }}
+        - name: app-tmp
+          emptyDir: {}
+        {{- else }}
+        - name: app-tmp
+          emptyDir: {}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $svc.name }}
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
   labels:
     app: {{ $svc.name }}
     app.kubernetes.io/name: {{ $svc.name }}
@@ -202,7 +335,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ $svc.name }}-pdb
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
 spec:
   minAvailable: {{ $.Values.pdb.minAvailable | default 1 }}
   selector:
@@ -215,7 +348,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ $svc.name }}-hpa
-  namespace: {{ $.Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -238,20 +371,51 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: hotel-default-mesh-network-policy
-  namespace: {{ .Values.global.namespace | default "dev" }}
+  namespace: {{ $ns }}
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
   ingress:
     - from:
         - namespaceSelector:
             matchLabels:
-              environment: {{ .Values.global.namespace | default "dev" }}
-        - namespaceSelector:
-            matchLabels:
-              environment: observability
+              environment: {{ $ns }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+        - protocol: TCP
+          port: 8083
+        - protocol: TCP
+          port: 8084
 {{- end }}

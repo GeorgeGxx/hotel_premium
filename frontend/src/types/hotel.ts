@@ -124,7 +124,7 @@ export interface CheckInFormData {
   notes: string;
 }
 
-type UserRole = 'ADMIN' | 'USER';
+export type UserRole = 'ADMIN' | 'USER';
 
 export interface CurrentUser {
   username: string;

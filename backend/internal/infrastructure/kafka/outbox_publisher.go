@@ -2,7 +2,9 @@ package kafka
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,11 +14,13 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 )
 
+const maxOutboxRetries = 10
+
 type OutboxPublisher struct {
-	pool          *pgxpool.Pool
-	writer        *kafkaGo.Writer
-	stayTopic     string
-	pollInterval  time.Duration
+	pool         *pgxpool.Pool
+	writer       *kafkaGo.Writer
+	stayTopic    string
+	pollInterval time.Duration
 }
 
 func NewOutboxPublisher(pool *pgxpool.Pool, bootstrapServers string, stayTopic string) *OutboxPublisher {
@@ -69,6 +73,21 @@ type outboxRecord struct {
 	eventType     string
 	payload       []byte
 	traceID       string
+	retryCount    int
+}
+
+// buildW3CTraceparent constructs a W3C traceparent header from a stored 32-hex OpenTelemetry TraceID
+func buildW3CTraceparent(traceID string) string {
+	cleaned := strings.TrimSpace(strings.ToLower(traceID))
+	if len(cleaned) != 32 {
+		return ""
+	}
+	for _, c := range cleaned {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("00-%s-0000000000000001-01", cleaned)
 }
 
 func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
@@ -76,31 +95,37 @@ func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
 		return
 	}
 
-	tx, err := p.pool.Begin(ctx)
+	// Phase 1: Claim a batch of PENDING events in a short transaction so row locks are not held across network I/O
+	claimCtx, claimCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer claimCancel()
+
+	tx, err := p.pool.Begin(claimCtx)
 	if err != nil {
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(claimCtx)
 
-	query := `
-		SELECT id, aggregate_type, aggregate_id, event_type, payload, COALESCE(trace_id, '')
+	claimQuery := `
+		SELECT id, aggregate_type, aggregate_id, event_type, payload, COALESCE(trace_id, ''), retry_count
 		FROM stay_outbox_events
-		WHERE status = 'PENDING'
+		WHERE status = 'PENDING' AND retry_count < $1
 		ORDER BY created_at ASC
 		LIMIT 50
 		FOR UPDATE SKIP LOCKED
 	`
 
-	rows, err := tx.Query(ctx, query)
+	rows, err := tx.Query(claimCtx, claimQuery, maxOutboxRetries)
 	if err != nil {
 		return
 	}
 
 	var records []outboxRecord
+	var claimedIDs []uuid.UUID
 	for rows.Next() {
 		var r outboxRecord
-		if err := rows.Scan(&r.id, &r.aggregateType, &r.aggregateID, &r.eventType, &r.payload, &r.traceID); err == nil {
+		if err := rows.Scan(&r.id, &r.aggregateType, &r.aggregateID, &r.eventType, &r.payload, &r.traceID, &r.retryCount); err == nil {
 			records = append(records, r)
+			claimedIDs = append(claimedIDs, r.id)
 		}
 	}
 	rows.Close()
@@ -109,17 +134,21 @@ func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
 		return
 	}
 
-	var kafkaMessages []kafkaGo.Message
-	var successfulIDs []uuid.UUID
+	// Commit claim transaction immediately to release PostgreSQL locks before Kafka network I/O
+	_ = tx.Commit(claimCtx)
 
+	// Phase 2: Build Kafka messages with W3C Trace Context propagation
+	var kafkaMessages []kafkaGo.Message
 	propagator := otel.GetTextMapPropagator()
 
 	for _, rec := range records {
 		var headers []kafkaGo.Header
 
-		// Inject Trace Context into Kafka message header
 		carrier := propagation.HeaderCarrier{}
 		propagator.Inject(ctx, carrier)
+		if tp := buildW3CTraceparent(rec.traceID); tp != "" {
+			carrier.Set("traceparent", tp)
+		}
 		for k, v := range carrier {
 			if len(v) > 0 {
 				headers = append(headers, kafkaGo.Header{Key: k, Value: []byte(v[0])})
@@ -127,6 +156,7 @@ func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
 		}
 
 		headers = append(headers,
+			kafkaGo.Header{Key: "event_id", Value: []byte(rec.id.String())},
 			kafkaGo.Header{Key: "event_type", Value: []byte(rec.eventType)},
 			kafkaGo.Header{Key: "aggregate_type", Value: []byte(rec.aggregateType)},
 			kafkaGo.Header{Key: "correlation_trace_id", Value: []byte(rec.traceID)},
@@ -139,38 +169,41 @@ func (p *OutboxPublisher) processPendingEvents(ctx context.Context) {
 			Time:    time.Now().UTC(),
 		}
 		kafkaMessages = append(kafkaMessages, msg)
-		successfulIDs = append(successfulIDs, rec.id)
 	}
 
-	publishCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	// Phase 3: Publish batch to Kafka with bounded timeout
+	publishCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
 	if err := p.writer.WriteMessages(publishCtx, kafkaMessages...); err != nil {
-		slog.Warn("Failed to publish outbox events to Kafka (broker unreachable or retrying)",
+		slog.Warn("Failed to publish outbox events to Kafka; incrementing retry_count",
 			"count", len(kafkaMessages),
 			"error", err,
 		)
+		failQuery := `
+			UPDATE stay_outbox_events
+			SET 
+				retry_count = retry_count + 1,
+				status = CASE WHEN retry_count + 1 >= $2 THEN 'FAILED' ELSE 'PENDING' END
+			WHERE id = ANY($1)
+		`
+		_, _ = p.pool.Exec(ctx, failQuery, claimedIDs, maxOutboxRetries)
 		return
 	}
 
-	// Update outbox records as PUBLISHED
+	// Phase 4: Mark outbox records as PUBLISHED
 	updateQuery := `
 		UPDATE stay_outbox_events
 		SET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP
 		WHERE id = ANY($1)
 	`
-	if _, err := tx.Exec(ctx, updateQuery, successfulIDs); err != nil {
+	if _, err := p.pool.Exec(ctx, updateQuery, claimedIDs); err != nil {
 		slog.Error("Failed to mark outbox events as published", "error", err)
 		return
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		slog.Error("Failed to commit outbox status update", "error", err)
-		return
-	}
-
-	slog.Info("Successfully published events to Kafka 8.3.2 KRaft",
+	slog.Info("Successfully published events to Kafka KRaft",
 		"topic", p.stayTopic,
-		"published_count", len(successfulIDs),
+		"published_count", len(claimedIDs),
 	)
 }

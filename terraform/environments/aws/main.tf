@@ -1,5 +1,6 @@
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix  = "${var.project_name}-${var.environment}"
+  nat_gw_count = var.environment == "prod" ? length(var.availability_zones) : 1
   microservices = toset([
     "hotel-room-service",
     "hotel-stay-service",
@@ -12,7 +13,7 @@ locals {
 data "aws_caller_identity" "current" {}
 
 # ==============================================================================
-# 1. CUSTOMER-MANAGED KMS KEY (Encryption at Rest for EKS, RDS, Redis, ECR, Logs)
+# 1. CUSTOMER-MANAGED KMS KEY (Encryption at Rest for EKS, RDS, Redis, MSK, ECR, Logs)
 # ==============================================================================
 resource "aws_kms_key" "platform" {
   description             = "Customer-managed KMS key for ${local.name_prefix} encryption at rest"
@@ -115,19 +116,21 @@ resource "aws_subnet" "private_data" {
 }
 
 resource "aws_eip" "nat" {
+  count  = local.nat_gw_count
   domain = "vpc"
   tags = {
-    Name = "${local.name_prefix}-nat-eip"
+    Name = "${local.name_prefix}-nat-eip-${count.index}"
   }
 }
 
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
+  count         = local.nat_gw_count
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
   depends_on    = [aws_internet_gateway.igw]
 
   tags = {
-    Name = "${local.name_prefix}-nat"
+    Name = "${local.name_prefix}-nat-${count.index}"
   }
 }
 
@@ -146,17 +149,29 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table" "private" {
+  count  = length(var.availability_zones)
   vpc_id = aws_vpc.main.id
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    nat_gateway_id = aws_nat_gateway.main[var.environment == "prod" ? count.index : 0].id
   }
 }
 
 resource "aws_route_table_association" "private_app" {
   count          = length(aws_subnet.private_app)
   subnet_id      = aws_subnet.private_app[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = aws_route_table.private[*].id
+
+  tags = {
+    Name = "${local.name_prefix}-s3-endpoint"
+  }
 }
 
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
@@ -173,6 +188,25 @@ resource "aws_iam_role" "vpc_flow_logs" {
       Effect    = "Allow"
       Principal = { Service = "vpc-flow-logs.amazonaws.com" }
       Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "vpc_flow_logs" {
+  name = "${local.name_prefix}-vpc-flow-logs-policy"
+  role = aws_iam_role.vpc_flow_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ]
+      Resource = "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
     }]
   })
 }
@@ -231,6 +265,11 @@ resource "aws_eks_cluster" "main" {
   role_arn = aws_iam_role.eks_cluster.arn
   version  = var.eks_cluster_version
 
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   vpc_config {
     subnet_ids              = aws_subnet.private_app[*].id
     endpoint_private_access = true
@@ -249,6 +288,16 @@ resource "aws_eks_cluster" "main" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
+}
+
+data "tls_certificate" "eks_oidc" {
+  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
 resource "aws_iam_role" "eks_nodes" {
@@ -368,11 +417,11 @@ resource "aws_ecr_lifecycle_policy" "services" {
 }
 
 # ==============================================================================
-# 5. AMAZON RDS POSTGRESQL 18 & ELASTICACHE REDIS (Isolated Data Subnets)
+# 5. AMAZON RDS POSTGRESQL, ELASTICACHE REDIS, MSK KAFKA & SECRETS MANAGER
 # ==============================================================================
 resource "aws_security_group" "data_plane" {
   name        = "${local.name_prefix}-data-sg"
-  description = "Least-privilege security group for RDS PostgreSQL and ElastiCache Redis"
+  description = "Least-privilege security group for RDS PostgreSQL, ElastiCache Redis, and MSK Kafka"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -387,6 +436,14 @@ resource "aws_security_group" "data_plane" {
     description     = "Redis 6379 from EKS worker nodes only"
     from_port       = 6379
     to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.eks_nodes.id]
+  }
+
+  ingress {
+    description     = "MSK Kafka TLS 9094 from EKS worker nodes only"
+    from_port       = 9094
+    to_port         = 9094
     protocol        = "tcp"
     security_groups = [aws_security_group.eks_nodes.id]
   }
@@ -425,6 +482,9 @@ resource "aws_db_instance" "postgres" {
   backup_retention_period         = 7
   deletion_protection             = var.environment == "prod"
   skip_final_snapshot             = var.environment != "prod"
+  final_snapshot_identifier       = var.environment == "prod" ? "${local.name_prefix}-postgres-final-snapshot" : null
+  performance_insights_enabled    = true
+  performance_insights_kms_key_id = aws_kms_key.platform.arn
   auto_minor_version_upgrade      = true
   copy_tags_to_snapshot           = true
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
@@ -447,6 +507,67 @@ resource "aws_elasticache_replication_group" "redis" {
   kms_key_id                 = aws_kms_key.platform.arn
   transit_encryption_enabled = true
   automatic_failover_enabled = var.environment == "prod"
+}
+
+resource "aws_cloudwatch_log_group" "msk_broker_logs" {
+  name              = "/aws/msk/${local.name_prefix}-broker-logs"
+  retention_in_days = 30
+  kms_key_id        = aws_kms_key.platform.arn
+}
+
+resource "aws_msk_cluster" "kafka" {
+  cluster_name           = "${local.name_prefix}-msk"
+  kafka_version          = "3.7.x"
+  number_of_broker_nodes = length(var.availability_zones)
+
+  broker_node_group_info {
+    instance_type   = var.msk_instance_type
+    client_subnets  = aws_subnet.private_data[*].id
+    security_groups = [aws_security_group.data_plane.id]
+
+    storage_info {
+      ebs_storage_info {
+        volume_size = 50
+      }
+    }
+  }
+
+  encryption_info {
+    encryption_at_rest_kms_key_arn = aws_kms_key.platform.arn
+    encryption_in_transit {
+      client_broker = "TLS"
+      in_cluster    = true
+    }
+  }
+
+  logging_info {
+    broker_logs {
+      cloudwatch_logs {
+        enabled   = true
+        log_group = aws_cloudwatch_log_group.msk_broker_logs.name
+      }
+    }
+  }
+}
+
+resource "aws_secretsmanager_secret" "hotel_app" {
+  name                    = "${local.name_prefix}/app-credentials"
+  description             = "Encrypted database, Redis, and MSK credentials for Hotel Premium microservices"
+  kms_key_id              = aws_kms_key.platform.arn
+  recovery_window_in_days = 30
+}
+
+resource "aws_secretsmanager_secret_version" "hotel_app" {
+  secret_id = aws_secretsmanager_secret.hotel_app.id
+  secret_string = jsonencode({
+    DB_HOST                 = aws_db_instance.postgres.address
+    DB_PORT                 = "5432"
+    DB_USER                 = var.db_username
+    DB_PASSWORD             = var.db_password
+    DB_NAME                 = "hotel_premium_db"
+    REDIS_ADDR              = "${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
+    KAFKA_BOOTSTRAP_SERVERS = aws_msk_cluster.kafka.bootstrap_brokers_tls
+  })
 }
 
 # ==============================================================================
@@ -474,11 +595,76 @@ resource "aws_iam_role" "github_actions_deployer" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:*"
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${var.github_repository}:ref:refs/heads/master",
+            "repo:${var.github_repository}:environment:production"
+          ]
         }
       }
     }]
   })
+}
+
+resource "aws_iam_role_policy" "github_actions_deployer" {
+  name = "${local.name_prefix}-github-actions-deployer-policy"
+  role = aws_iam_role.github_actions_deployer.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowECRToken"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowECRPushPull"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ]
+        Resource = [for repo in aws_ecr_repository.services : repo.arn]
+      },
+      {
+        Sid      = "AllowEKSDescribe"
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
+        Resource = aws_eks_cluster.main.arn
+      },
+      {
+        Sid    = "AllowKMSForECR"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = aws_kms_key.platform.arn
+      }
+    ]
+  })
+}
+
+resource "aws_eks_access_entry" "github_actions" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = aws_iam_role.github_actions_deployer.arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "github_actions_admin" {
+  cluster_name  = aws_eks_cluster.main.name
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  principal_arn = aws_iam_role.github_actions_deployer.arn
+
+  access_scope {
+    type = "cluster"
+  }
 }
 
 # ==============================================================================

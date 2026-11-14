@@ -10,15 +10,81 @@ import {
   StayCharge,
   AddStayChargeDTO,
 } from '../types/hotel';
+import { getValidAccessToken, getActiveSessionRole } from './auth';
 
 const rawApiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const API_BASE = rawApiBase === '/api' ? '/api/v1' : rawApiBase;
+const DEFAULT_TIMEOUT_MS = 10000;
+
+export class ApiError extends Error {
+  public readonly status: number;
+  public readonly correlationId: string;
+
+  constructor(message: string, status = 500, correlationId = '') {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.correlationId = correlationId;
+  }
+}
+
+let demoMockOverride: boolean | null = null;
+
+/**
+ * Allows explicit toggling of offline demo mock fallback in development or unit tests.
+ * In production builds (MODE === 'production'), demo mocks are disabled unless VITE_ENABLE_DEMO_MOCKS === 'true'.
+ */
+export function setDemoMockMode(enabled: boolean | null): void {
+  demoMockOverride = enabled;
+}
+
+export function isDemoMockEnabled(): boolean {
+  if (demoMockOverride !== null) {
+    return demoMockOverride;
+  }
+  return import.meta.env.VITE_ENABLE_DEMO_MOCKS === 'true' || import.meta.env.MODE === 'test';
+}
 
 function generateIdempotencyKey(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function buildRequestHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string>> {
+  const correlationId = generateIdempotencyKey('corr');
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'X-Correlation-ID': correlationId,
+    ...extraHeaders,
+  };
+
+  const token = await getValidAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else if (import.meta.env.MODE !== 'production') {
+    headers['X-User-Role'] = extraHeaders['X-User-Role'] || getActiveSessionRole();
+  }
+
+  return headers;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller ? controller.signal : undefined,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 const mockRooms: Room[] = [
@@ -138,10 +204,6 @@ const mockRooms: Room[] = [
   },
 ];
 
-/**
- * Returns a high-definition, verified hospitality photography image URL for a given room.
- * Uses room.image_url if present, otherwise maps to curated luxury suite photos.
- */
 export function getRoomImageUrl(room: Partial<Room>): string {
   if (room.image_url && room.image_url.trim() !== '') {
     return room.image_url;
@@ -185,7 +247,6 @@ export const CONCIERGE_ADDONS: ConciergeAddon[] = [
   },
 ];
 
-// Simulated cache for mock fallback
 let mockStaysMemory: StayDetails[] = [
   {
     id: 'stay-0001-mock',
@@ -266,48 +327,69 @@ let activeRoomsMemory: Room[] = [...mockRooms];
 
 export async function fetchRooms(): Promise<Room[]> {
   try {
-    const res = await fetch(`${API_BASE}/rooms`, {
-      headers: { 'Accept': 'application/json' },
-    });
-    if (!res.ok) throw new Error('API request failed');
+    const headers = await buildRequestHeaders();
+    const res = await fetchWithTimeout(`${API_BASE}/rooms`, { headers });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || `Failed to fetch rooms (HTTP ${res.status})`, res.status);
+    }
     const data = await res.json();
-    const rooms = Array.isArray(data) && data.length > 0 ? data : mockRooms;
-    activeRoomsMemory = rooms;
-    return rooms;
-  } catch {
-    return mockRooms;
+    if (Array.isArray(data)) {
+      if (data.length === 0 && isDemoMockEnabled()) {
+        return mockRooms;
+      }
+      activeRoomsMemory = data;
+      return data;
+    }
+    return isDemoMockEnabled() ? mockRooms : [];
+  } catch (err) {
+    if (isDemoMockEnabled()) {
+      return mockRooms;
+    }
+    throw err instanceof Error ? err : new ApiError('Failed to fetch rooms');
   }
 }
 
 export async function updateRoomStatus(roomId: string, status: RoomStatus): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/rooms/${roomId}/status`, {
+    const headers = await buildRequestHeaders({
+      'Content-Type': 'application/json',
+    });
+    const res = await fetchWithTimeout(`${API_BASE}/rooms/${roomId}/status`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Role': 'ADMIN',
-      },
+      headers,
       body: JSON.stringify({ status }),
     });
-    if (!res.ok) throw new Error('Failed to update room status on backend');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to update room status on backend', res.status);
+    }
   } catch (err) {
-    console.warn('Backend updateRoomStatus failed, applied locally:', err);
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to update room status');
+    }
   }
 }
 
 export async function updateRoomPrice(roomId: string, price: number): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/rooms/${roomId}/price`, {
+    const headers = await buildRequestHeaders({
+      'Content-Type': 'application/json',
+      'X-User-Role': 'ADMIN',
+    });
+    const res = await fetchWithTimeout(`${API_BASE}/rooms/${roomId}/price`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Role': 'ADMIN',
-      },
+      headers,
       body: JSON.stringify({ price }),
     });
-    if (!res.ok) throw new Error('Failed to update room rate on backend');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to update room rate on backend', res.status);
+    }
   } catch (err) {
-    console.warn('Backend updateRoomPrice failed, applied locally:', err);
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to update room price');
+    }
   }
 }
 
@@ -318,49 +400,68 @@ export async function updateRoomPrice(roomId: string, price: number): Promise<vo
 export async function fetchStays(status?: StayStatus): Promise<StayDetails[]> {
   try {
     const url = status ? `${API_BASE}/stays?status=${status}` : `${API_BASE}/stays`;
-    const res = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-    });
-    if (!res.ok) throw new Error('Failed to fetch stays from backend');
+    const headers = await buildRequestHeaders();
+    const res = await fetchWithTimeout(url, { headers });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to fetch stays from backend', res.status);
+    }
     const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
+    if (Array.isArray(data)) {
+      if (data.length === 0 && isDemoMockEnabled()) {
+        return status ? mockStaysMemory.filter((s) => s.status === status) : mockStaysMemory;
+      }
       return data;
     }
-    return status ? mockStaysMemory.filter((s) => s.status === status) : mockStaysMemory;
-  } catch {
-    return status ? mockStaysMemory.filter((s) => s.status === status) : mockStaysMemory;
+    return isDemoMockEnabled()
+      ? status
+        ? mockStaysMemory.filter((s) => s.status === status)
+        : mockStaysMemory
+      : [];
+  } catch (err) {
+    if (isDemoMockEnabled()) {
+      return status ? mockStaysMemory.filter((s) => s.status === status) : mockStaysMemory;
+    }
+    throw err instanceof Error ? err : new ApiError('Failed to fetch stays');
   }
 }
 
 export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
   try {
-    const res = await fetch(`${API_BASE}/stays`, {
+    const headers = await buildRequestHeaders({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': generateIdempotencyKey('stay-create'),
+    });
+    const res = await fetchWithTimeout(`${API_BASE}/stays`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Idempotency-Key': generateIdempotencyKey('stay-create'),
-      },
+      headers,
       body: JSON.stringify(dto),
     });
     if (res.status === 409) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Room is already booked for this period.');
+      throw new ApiError(errData.error || 'Room is already booked for this period.', 409);
     }
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to create reservation');
+      throw new ApiError(errData.error || 'Failed to create reservation', res.status);
     }
     return res.json();
   } catch (err: unknown) {
+    if (err instanceof ApiError && err.status === 409) {
+      throw err;
+    }
     if (err instanceof Error && err.message.includes('already booked')) {
       throw err;
     }
-    // Fallback simulation for local offline testing
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to create reservation');
+    }
+
+    // Explicit demo/test mode simulation only
     const roomInfo =
       activeRoomsMemory.find((r) => r.id === dto.room_id) ||
       mockRooms.find((r) => r.id === dto.room_id);
-    const totalAmount = dto.total_nights * dto.nightly_rate;
+    const totalAmount = Math.round(dto.total_nights * dto.nightly_rate * 100) / 100;
     const paymentStatus: PaymentStatus =
       dto.deposit_amount >= totalAmount
         ? 'PAID'
@@ -398,31 +499,40 @@ export async function createStay(dto: CreateStayDTO): Promise<StayDetails> {
 
 export async function updateStay(stayId: string, dto: UpdateStayDTO): Promise<StayDetails> {
   try {
-    const res = await fetch(`${API_BASE}/stays/${stayId}`, {
+    const headers = await buildRequestHeaders({
+      'Content-Type': 'application/json',
+    });
+    const res = await fetchWithTimeout(`${API_BASE}/stays/${stayId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers,
       body: JSON.stringify(dto),
     });
     if (res.status === 409) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Conflict: Room is booked for these dates.');
+      throw new ApiError(errData.error || 'Conflict: Room is booked for these dates.', 409);
     }
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to update reservation');
+      throw new ApiError(errData.error || 'Failed to update reservation', res.status);
     }
     return res.json();
-  } catch (err: any) {
-    if (err.message && err.message.includes('Conflict')) {
+  } catch (err: unknown) {
+    if (err instanceof ApiError && err.status === 409) {
       throw err;
     }
-    // Fallback simulation
+    if (err instanceof Error && err.message.includes('Conflict')) {
+      throw err;
+    }
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to update reservation');
+    }
+
     mockStaysMemory = mockStaysMemory.map((s) => {
       if (s.id !== stayId) return s;
       const updatedTotalNights = dto.total_nights ?? s.total_nights;
       const updatedRate = dto.nightly_rate ?? s.nightly_rate;
       const updatedDeposit = dto.deposit_amount ?? s.deposit_amount;
-      const updatedTotal = updatedTotalNights * updatedRate;
+      const updatedTotal = Math.round(updatedTotalNights * updatedRate * 100) / 100;
       return {
         ...s,
         check_in_date: dto.check_in_date ?? s.check_in_date,
@@ -431,7 +541,7 @@ export async function updateStay(stayId: string, dto: UpdateStayDTO): Promise<St
         nightly_rate: updatedRate,
         deposit_amount: updatedDeposit,
         total_amount: updatedTotal,
-        payment_status: updatedDeposit >= updatedTotal ? 'PAID' : (updatedDeposit > 0 ? 'PARTIAL' : 'PENDING'),
+        payment_status: updatedDeposit >= updatedTotal ? 'PAID' : updatedDeposit > 0 ? 'PARTIAL' : 'PENDING',
         notes: dto.notes ?? s.notes,
       };
     });
@@ -443,37 +553,55 @@ export async function updateStay(stayId: string, dto: UpdateStayDTO): Promise<St
 
 export async function cancelStay(stayId: string): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/stays/${stayId}`, {
+    const headers = await buildRequestHeaders();
+    const res = await fetchWithTimeout(`${API_BASE}/stays/${stayId}`, {
       method: 'DELETE',
-      headers: { 'Accept': 'application/json' },
+      headers,
     });
     if (!res.ok) {
-      throw new Error('Failed to cancel reservation on server');
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to cancel reservation on server', res.status);
     }
   } catch (err) {
-    console.warn('Backend cancel failed, applying locally:', err);
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to cancel reservation');
+    }
   } finally {
-    mockStaysMemory = mockStaysMemory.map((s) =>
-      s.id === stayId ? { ...s, status: 'CANCELLED' } : s
-    );
+    if (isDemoMockEnabled()) {
+      mockStaysMemory = mockStaysMemory.map((s) =>
+        s.id === stayId ? { ...s, status: 'CANCELLED' } : s
+      );
+    }
   }
 }
 
-export async function checkOutStay(stayId: string): Promise<void> {
+export async function checkOutStay(
+  stayId: string,
+  settlement?: { deposit_amount?: number; payment_status?: PaymentStatus; notes?: string }
+): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/stays/${stayId}/check-out`, {
+    const headers = await buildRequestHeaders(
+      settlement ? { 'Content-Type': 'application/json' } : {}
+    );
+    const res = await fetchWithTimeout(`${API_BASE}/stays/${stayId}/check-out`, {
       method: 'POST',
-      headers: { 'Accept': 'application/json' },
+      headers,
+      body: settlement ? JSON.stringify(settlement) : undefined,
     });
     if (!res.ok) {
-      throw new Error('Failed to complete check-out on server');
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to complete check-out on server', res.status);
     }
   } catch (err) {
-    console.warn('Backend check-out failed, applying locally:', err);
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to complete check-out');
+    }
   } finally {
-    mockStaysMemory = mockStaysMemory.map((s) =>
-      s.id === stayId ? { ...s, status: 'CHECKED_OUT' } : s
-    );
+    if (isDemoMockEnabled()) {
+      mockStaysMemory = mockStaysMemory.map((s) =>
+        s.id === stayId ? { ...s, status: 'CHECKED_OUT' } : s
+      );
+    }
   }
 }
 
@@ -481,9 +609,6 @@ export async function checkOutStay(stayId: string): Promise<void> {
 // REAL-TIME SERVER-SENT EVENTS (SSE) & SAGA INTEGRATION
 // ==============================================================================
 
-/**
- * Connects to the backend SSE stream for instant Front Desk room & reservation sync
- */
 export function subscribeToLiveEvents(
   onEvent: (eventType: string, data: any) => void
 ): () => void {
@@ -491,33 +616,34 @@ export function subscribeToLiveEvents(
     const sseUrl = `${API_BASE}/events/live`;
     const eventSource = new EventSource(sseUrl);
 
-    eventSource.addEventListener('room_updated', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        onEvent('room_updated', payload);
-      } catch (err) {
-        console.error('Failed to parse room_updated SSE:', err);
-      }
-    });
+    const supportedEvents = [
+      'room_updated',
+      'room_price_updated',
+      'stay_created',
+      'stay_updated',
+      'stay_cancelled',
+      'stay_checked_out',
+    ];
 
-    eventSource.addEventListener('stay_created', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        onEvent('stay_created', payload);
-      } catch (err) {
-        console.error('Failed to parse stay_created SSE:', err);
-      }
-    });
+    for (const evtName of supportedEvents) {
+      eventSource.addEventListener(evtName, (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          onEvent(evtName, payload);
+        } catch (err) {
+          console.error(`Failed to parse ${evtName} SSE:`, err);
+        }
+      });
+    }
 
     eventSource.onerror = () => {
-      // Automatic browser reconnect handling
+      // Browser EventSource handles automatic exponential reconnection
     };
 
     return () => {
       eventSource.close();
     };
-  } catch (err) {
-    console.warn('SSE EventSource not supported in current environment:', err);
+  } catch {
     return () => {};
   }
 }
@@ -549,55 +675,66 @@ let mockChargesMemory: StayCharge[] = [
 
 export async function fetchStayCharges(stayId: string): Promise<StayCharge[]> {
   try {
-    const res = await fetch(`${API_BASE}/billing/stays/${stayId}/charges`, {
-      headers: { 'Accept': 'application/json' },
+    const headers = await buildRequestHeaders();
+    const res = await fetchWithTimeout(`${API_BASE}/billing/stays/${stayId}/charges`, {
+      headers,
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
-      }
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to fetch stay charges', res.status);
     }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      if (data.length === 0 && isDemoMockEnabled()) {
+        return mockChargesMemory.filter((c) => c.stay_id === stayId);
+      }
+      return data;
+    }
+    return [];
   } catch (err) {
-    console.warn('Backend charges fetch failed, falling back to local memory:', err);
+    if (isDemoMockEnabled()) {
+      return mockChargesMemory.filter((c) => c.stay_id === stayId);
+    }
+    throw err instanceof Error ? err : new ApiError('Failed to fetch stay charges');
   }
-  return mockChargesMemory.filter((c) => c.stay_id === stayId);
 }
 
 export async function addStayCharge(dto: AddStayChargeDTO): Promise<StayCharge> {
-  const newCharge: StayCharge = {
-    id: generateIdempotencyKey('chg'),
-    stay_id: dto.stay_id,
-    product_id: dto.product_id,
-    description: dto.description,
-    quantity: dto.quantity || 1,
-    unit_price: dto.unit_price,
-    total_price: (dto.quantity || 1) * dto.unit_price,
-    created_at: new Date().toISOString(),
-  };
-
   try {
-    const res = await fetch(`${API_BASE}/billing/charges`, {
+    const headers = await buildRequestHeaders({
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': generateIdempotencyKey('idem-chg'),
+    });
+    const res = await fetchWithTimeout(`${API_BASE}/billing/charges`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-Idempotency-Key': generateIdempotencyKey('idem-chg'),
-      },
+      headers,
       body: JSON.stringify(dto),
     });
-    if (res.ok) {
-      const serverCharge = await res.json();
-      mockChargesMemory.push(serverCharge);
-      return serverCharge;
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new ApiError(errData.error || 'Failed to post folio charge', res.status);
     }
+    const serverCharge = await res.json();
+    if (isDemoMockEnabled()) {
+      mockChargesMemory.push(serverCharge);
+    }
+    return serverCharge;
   } catch (err) {
-    console.warn('Backend add charge failed, applying locally:', err);
+    if (!isDemoMockEnabled()) {
+      throw err instanceof Error ? err : new ApiError('Failed to post folio charge');
+    }
+    const qty = dto.quantity || 1;
+    const newCharge: StayCharge = {
+      id: generateIdempotencyKey('chg'),
+      stay_id: dto.stay_id,
+      product_id: dto.product_id,
+      description: dto.description,
+      quantity: qty,
+      unit_price: dto.unit_price,
+      total_price: Math.round(qty * dto.unit_price * 100) / 100,
+      created_at: new Date().toISOString(),
+    };
+    mockChargesMemory.push(newCharge);
+    return newCharge;
   }
-
-  mockChargesMemory.push(newCharge);
-  return newCharge;
 }
-
-
-

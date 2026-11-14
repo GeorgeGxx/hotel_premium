@@ -23,6 +23,16 @@ output "elasticache_redis_endpoint" {
   value       = aws_elasticache_replication_group.redis.primary_endpoint_address
 }
 
+output "msk_bootstrap_brokers_tls" {
+  description = "TLS bootstrap broker endpoints for Amazon MSK Kafka"
+  value       = aws_msk_cluster.kafka.bootstrap_brokers_tls
+}
+
+output "secrets_manager_secret_arn" {
+  description = "ARN of the AWS Secrets Manager secret storing application credentials"
+  value       = aws_secretsmanager_secret.hotel_app.arn
+}
+
 output "ecr_repository_urls" {
   description = "Map of microservice names to Amazon ECR repository URLs"
   value       = { for k, v in aws_ecr_repository.services : k => v.repository_url }

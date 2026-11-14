@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/hotelpremium/backend/internal/infrastructure/config"
+	infraHttp "github.com/hotelpremium/backend/internal/infrastructure/http"
+	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/swagger"
 	"github.com/hotelpremium/backend/internal/infrastructure/kafka"
 	"github.com/hotelpremium/backend/internal/infrastructure/redis"
@@ -30,7 +32,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting Notification Worker (Kafka 8.3.2 Consumer with DLQ, Redis Deduplication & Exponential Backoff)...")
+	slog.Info("Starting Notification Worker (Kafka Consumer with DLQ, Redis Deduplication & Exponential Backoff)...")
 
 	cfg := config.Load()
 	port := os.Getenv("PORT")
@@ -63,53 +65,71 @@ func main() {
 	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
 	if err == nil && redisClient != nil {
 		defer redisClient.Close()
+		handler.RegisterReadinessCheck("redis", func(c context.Context) error {
+			return redisClient.Ping(c).Err()
+		})
 	}
 
 	// 2. Kafka DLQ Manager Initialization (3 retries, 500ms base backoff)
 	dlqManager := kafka.NewDLQManager(cfg.KafkaBootstrapServers, cfg.KafkaStayTopic, 3, 500*time.Millisecond)
 	defer dlqManager.Close()
 
-	// 3. Metrics & Health Endpoint for Prometheus & Observability Mesh
+	// Allowed Kafka topics for controlled DLQ replay (prevents arbitrary topic injection)
+	allowedReplayTopics := map[string]bool{
+		cfg.KafkaStayTopic:         true,
+		"hotel.stays.lifecycle.v1": true,
+		"hotel.stays.events":       true,
+		"hotel.billing.events":     true,
+	}
+
+	// 3. Metrics, Liveness & Readiness Endpoints
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "UP",
 			"service": "notification-worker",
-			"broker":  "Apache Kafka 8.3.2 (KRaft)",
+			"broker":  "Apache Kafka (KRaft)",
 			"topic":   cfg.KafkaStayTopic,
 			"dlq":     cfg.KafkaStayTopic + ".DLQ",
 		})
 	})
-	notifHandler := func(w http.ResponseWriter, r *http.Request) {
-		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-		if telemetry.Tracer != nil {
-			var span trace.Span
-			_, span = telemetry.Tracer.Start(ctx, "notification-worker: GET /api/v1/notifications",
-				trace.WithSpanKind(trace.SpanKindServer),
-			)
-			defer span.End()
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"service":             "notification-worker",
-			"status":              "ACTIVE",
-			"broker_version":      "8.3.2",
-			"topic":               cfg.KafkaStayTopic,
-			"processed_events":    processedEvents.Load(),
-			"deduplicated_events": deduplicatedEvents.Load(),
-		})
-	}
+	mux.HandleFunc("GET /healthz", handler.HealthCheck)
+	mux.HandleFunc("GET /api/v1/ready", handler.ReadinessCheck)
+	mux.HandleFunc("GET /readyz", handler.ReadinessCheck)
+
+	notifHandler := infraHttp.RequireRoleHTTP(
+		[]string{infraHttp.RoleAdmin, infraHttp.RoleManager, infraHttp.RoleReceptionist, infraHttp.RoleUser},
+		func(w http.ResponseWriter, r *http.Request) {
+			ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+			if telemetry.Tracer != nil {
+				var span trace.Span
+				_, span = telemetry.Tracer.Start(ctx, "notification-worker: GET /api/v1/notifications",
+					trace.WithSpanKind(trace.SpanKindServer),
+				)
+				defer span.End()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"service":             "notification-worker",
+				"status":              "ACTIVE",
+				"topic":               cfg.KafkaStayTopic,
+				"processed_events":    processedEvents.Load(),
+				"deduplicated_events": deduplicatedEvents.Load(),
+			})
+		},
+	)
 	mux.HandleFunc("GET /api/v1/notifications", notifHandler)
 	mux.HandleFunc("GET /api/v1/notifications/", notifHandler)
 
-	// SRE DLQ Inspection and Replay Endpoints
-	mux.HandleFunc("GET /api/v1/dlq/events", func(w http.ResponseWriter, r *http.Request) {
+	// SRE DLQ Inspection and Replay Endpoints (Strictly protected by ADMIN / MANAGER RBAC)
+	adminRoles := []string{infraHttp.RoleAdmin, infraHttp.RoleManager}
+	mux.HandleFunc("GET /api/v1/dlq/events", infraHttp.RequireRoleHTTP(adminRoles, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(dlqManager.GetDLQEvents())
-	})
+	}))
 
-	mux.HandleFunc("POST /api/v1/dlq/replay", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/dlq/replay", infraHttp.RequireRoleHTTP(adminRoles, func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			TargetTopic string `json:"target_topic"`
 			Key         string `json:"key"`
@@ -122,13 +142,17 @@ func main() {
 		if payload.TargetTopic == "" {
 			payload.TargetTopic = cfg.KafkaStayTopic
 		}
+		if !allowedReplayTopics[payload.TargetTopic] {
+			http.Error(w, `{"error":"disallowed target_topic for DLQ replay"}`, http.StatusBadRequest)
+			return
+		}
 		if err := dlqManager.Replay(r.Context(), payload.TargetTopic, []byte(payload.Key), []byte(payload.Value)); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"failed to replay: %s"}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "REPLAYED", "target_topic": payload.TargetTopic})
-	})
+	}))
 
 	mux.Handle("GET /metrics", promhttp.Handler())
 	swagger.RegisterSwaggerUIMux(mux, "notification-worker")
@@ -157,7 +181,7 @@ func main() {
 	})
 	defer reader.Close()
 
-	slog.Info("Notification Worker connected to Kafka 8.3.2 with DLQ",
+	slog.Info("Notification Worker connected to Kafka with DLQ",
 		"broker", cfg.KafkaBootstrapServers,
 		"topic", cfg.KafkaStayTopic,
 		"dlq_topic", cfg.KafkaStayTopic+".DLQ",
@@ -185,14 +209,16 @@ func main() {
 		// Process with Exponential Backoff and Poison-Pill DLQ Protection
 		_ = dlqManager.ProcessWithRetry(ctx, msg, func(m kafkaGo.Message) error {
 			carrier := propagation.HeaderCarrier{}
-			var eventType, correlationID string
+			var eventType, correlationID, eventID string
 			for _, h := range m.Headers {
 				carrier[h.Key] = []string{string(h.Value)}
-				if h.Key == "event_type" {
+				switch h.Key {
+				case "event_type":
 					eventType = string(h.Value)
-				}
-				if h.Key == "correlation_trace_id" {
+				case "correlation_trace_id":
 					correlationID = string(h.Value)
+				case "event_id":
+					eventID = string(h.Value)
 				}
 			}
 
@@ -210,13 +236,18 @@ func main() {
 				return errors.New("malformed json payload: poison pill")
 			}
 
-			// Idempotent Event Deduplication via Redis (24h TTL)
+			// Idempotent Event Deduplication via Redis (24h TTL) using stable event_id when available
 			if redisClient != nil {
-				dedupKey := fmt.Sprintf("notif:dedup:%s:%s:%d:%d", eventType, string(m.Key), m.Partition, m.Offset)
+				var dedupKey string
+				if eventID != "" {
+					dedupKey = fmt.Sprintf("notif:dedup:id:%s", eventID)
+				} else {
+					dedupKey = fmt.Sprintf("notif:dedup:%s:%s:%d:%d", eventType, string(m.Key), m.Partition, m.Offset)
+				}
 				acquired, rErr := redisClient.SetNX(msgCtx, dedupKey, "1", 24*time.Hour).Result()
 				if rErr == nil && !acquired {
 					deduplicatedEvents.Add(1)
-					slog.Info("Skipping duplicate Kafka 8.3.2 event (idempotency guard)",
+					slog.Info("Skipping duplicate Kafka event (idempotency guard)",
 						"dedup_key", dedupKey,
 						"event_type", eventType,
 					)
@@ -225,31 +256,29 @@ func main() {
 			}
 
 			processedEvents.Add(1)
-			slog.Info("Processed Domain Event from Kafka 8.3.2",
+			slog.Info("Processed Domain Event from Kafka",
 				"topic", m.Topic,
 				"partition", m.Partition,
 				"offset", m.Offset,
 				"event_key", string(m.Key),
 				"event_type", eventType,
 				"correlation_id", correlationID,
-				"payload", payload,
+				"stay_id", payload["stay_id"],
 			)
 
-			// Business asynchronous notifications (supports both canonical UPPER_SNAKE and PascalCase event types)
 			switch eventType {
 			case "STAY_CREATED", "StayCreated":
-				slog.Info("[Notification] Sent VIP reservation confirmation email and SMS voucher",
-					"guest", payload["guest_name"],
-					"email", payload["guest_email"],
+				slog.Info("[Notification] Dispatched reservation confirmation voucher",
 					"stay_id", payload["stay_id"],
+					"room_id", payload["room_id"],
 				)
 			case "GUEST_CHECKED_OUT", "GuestCheckedOut":
-				slog.Info("[Notification] Dispatched Housekeeping alert to cleaning team for room turnover",
+				slog.Info("[Notification] Dispatched Housekeeping turnover alert",
 					"room_id", payload["room_id"],
 					"stay_id", payload["stay_id"],
 				)
 			case "STAY_CANCELLED", "StayCancelled":
-				slog.Info("[Notification] Processed reservation cancellation and released hold",
+				slog.Info("[Notification] Processed reservation cancellation notification",
 					"stay_id", payload["stay_id"],
 				)
 			}

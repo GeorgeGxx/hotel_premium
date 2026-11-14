@@ -48,7 +48,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_occupancy_rate_percent) or vector(66.7)",
+          "expr": "max(hotel_occupancy_rate_percent)",
           "refId": "A"
         }
       ],
@@ -85,7 +85,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_revenue_adr_usd) or vector(145.50)",
+          "expr": "max(hotel_revenue_adr_usd)",
           "refId": "A"
         }
       ],
@@ -120,7 +120,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_revenue_revpar_usd) or vector(112.75)",
+          "expr": "max(hotel_revenue_revpar_usd)",
           "refId": "A"
         }
       ],
@@ -155,7 +155,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_revenue_trevpar_usd) or vector(138.40)",
+          "expr": "max(hotel_revenue_trevpar_usd)",
           "refId": "A"
         }
       ],
@@ -190,7 +190,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_kpi_los_nights) or vector(2.8)",
+          "expr": "max(hotel_kpi_los_nights)",
           "refId": "A"
         }
       ],
@@ -225,7 +225,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_kpi_cancellation_rate) or vector(4.2)",
+          "expr": "max(hotel_kpi_cancellation_rate)",
           "refId": "A"
         }
       ],
@@ -348,17 +348,17 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(hotel_folio_deposits_collected_usd) or vector(16450)",
+          "expr": "max(hotel_folio_deposits_collected_usd)",
           "legendFormat": "Deposits Collected (Paid)",
           "refId": "A"
         },
         {
-          "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+          "expr": "max(hotel_revenue_ancillary_usd)",
           "legendFormat": "Concierge & POS Ancillary",
           "refId": "B"
         },
         {
-          "expr": "max(hotel_folio_balance_pending_usd) or vector(7350)",
+          "expr": "max(hotel_folio_balance_pending_usd)",
           "legendFormat": "Pending Folio Receivables",
           "refId": "C"
         }
@@ -410,7 +410,7 @@
           "refId": "A"
         },
         {
-          "expr": "max(hotel_revenue_ancillary_usd) or vector(4280)",
+          "expr": "max(hotel_revenue_ancillary_usd)",
           "legendFormat": "Concierge & Spa Ancillary",
           "refId": "B"
         }

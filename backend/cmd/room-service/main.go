@@ -55,23 +55,38 @@ func main() {
 	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
 	if err == nil && redisClient != nil {
 		defer redisClient.Close()
+		handler.RegisterReadinessCheck("redis", func(c context.Context) error {
+			return redisClient.Ping(c).Err()
+		})
 	}
 
 	// GORM v1.31.2 PostgreSQL initialization
 	gormDB, err := postgres.NewGormDB(ctx, cfg)
 	if err != nil {
 		slog.Error("GORM database connection failed", "error", err)
+		if strings.EqualFold(cfg.AppEnv, "production") {
+			os.Exit(1)
+		}
 	}
 	if gormDB != nil {
 		sqlDB, err := gormDB.DB()
 		if err == nil && sqlDB != nil {
 			defer sqlDB.Close()
+			handler.RegisterReadinessCheck("postgres", func(c context.Context) error {
+				return sqlDB.PingContext(c)
+			})
+		}
+		if strings.EqualFold(os.Getenv("AUTO_RUN_MIGRATIONS"), "true") {
+			if mErr := postgres.RunMigrations(ctx, gormDB, os.Getenv("MIGRATIONS_DIR")); mErr != nil {
+				slog.Error("Database migration failed", "error", mErr)
+				os.Exit(1)
+			}
 		}
 	}
 
 	// Initialize GORM Room Repository (with Redis singleflight CacheManager) and Handler
 	roomRepo := postgres.NewGormRoomRepository(gormDB).WithCache(redis.NewCacheManager(redisClient))
-	roomHandler := handler.NewRoomHandler(roomRepo)
+	roomHandler := handler.NewRoomHandler(roomRepo).WithBroadcaster(infraHttp.GlobalSSEHub.Broadcast)
 
 	// Gin v1.12.0 Engine with Tracing, Metrics and Slog Middleware
 	ginEngine := infraHttp.NewGinRoomEngine(roomHandler)
@@ -80,7 +95,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      ginEngine,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 0, // Zero WriteTimeout to support long-lived SSE event streams alongside per-request context timeouts
 		IdleTimeout:  60 * time.Second,
 	}
 

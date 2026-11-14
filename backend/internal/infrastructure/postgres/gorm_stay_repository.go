@@ -23,6 +23,17 @@ func NewGormStayRepository(db *gorm.DB) *GormStayRepository {
 	return &GormStayRepository{db: db}
 }
 
+func maskEmailPII(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || len(parts[0]) == 0 {
+		return "***"
+	}
+	if len(parts[0]) <= 2 {
+		return parts[0][:1] + "***@" + parts[1]
+	}
+	return parts[0][:2] + "***@" + parts[1]
+}
+
 func (r *GormStayRepository) FindAll(ctx context.Context, status *stay.Status) ([]*stay.StayDetails, error) {
 	if r.db == nil {
 		return nil, errors.New("database connection unavailable")
@@ -52,7 +63,7 @@ func (r *GormStayRepository) FindAll(ctx context.Context, status *stay.Status) (
 		rows = r.db.WithContext(ctx).Raw(query)
 	}
 
-	var sqlRows, err = rows.Rows()
+	sqlRows, err := rows.Rows()
 	if err != nil {
 		return nil, fmt.Errorf("gorm: failed to query stays: %w", err)
 	}
@@ -122,11 +133,60 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 	if r.db == nil {
 		return nil, errors.New("database connection unavailable")
 	}
+	if !input.CheckOutDate.After(input.CheckInDate) {
+		return nil, stay.ErrInvalidDateRange
+	}
 
 	var createdDetails *stay.StayDetails
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. Resolve registered user
+		// 1. Lock target room row & read authoritative category base_price and physical status
+		var currentRoomStatus string
+		var authoritativeBasePrice float64
+		roomRow := tx.Raw(`
+			SELECT r.status, c.base_price
+			FROM rooms r
+			JOIN room_categories c ON r.category_id = c.id
+			WHERE r.id = ?
+			FOR UPDATE OF r
+		`, input.RoomID).Row()
+		if err := roomRow.Scan(&currentRoomStatus, &authoritativeBasePrice); err != nil {
+			return errors.New("target room not found")
+		}
+
+		// Determine stay lifecycle status (RESERVED vs ACTIVE)
+		status := string(input.Status)
+		if status != string(stay.StatusReserved) && status != string(stay.StatusActive) {
+			if input.CheckInDate.After(time.Now().UTC().Add(2 * time.Hour)) {
+				status = string(stay.StatusReserved)
+			} else {
+				status = string(stay.StatusActive)
+			}
+		}
+
+		// Enforce physical room status invariants:
+		// - Immediate check-in (ACTIVE) requires room to be physically AVAILABLE.
+		// - Future reservation (RESERVED) checks calendar availability via GiST exclusion without overwriting current physical room status.
+		if status == string(stay.StatusActive) {
+			if currentRoomStatus != "AVAILABLE" {
+				return stay.ErrRoomNotReadyForCheckIn
+			}
+		} else {
+			if currentRoomStatus == "MAINTENANCE" || currentRoomStatus == "BLOCKED" {
+				return stay.ErrRoomNotReadyForCheckIn
+			}
+		}
+
+		// Use authoritative room base price from database (never trust arbitrary low prices from client)
+		nightlyRate := stay.RoundCurrency(authoritativeBasePrice)
+		if nightlyRate <= 0 {
+			nightlyRate = stay.RoundCurrency(input.NightlyRate)
+		}
+		if nightlyRate <= 0 {
+			return stay.ErrInvalidNightlyRate
+		}
+
+		// 2. Resolve registered user
 		var userID uuid.UUID
 		if input.RegisteredByID != uuid.Nil {
 			userID = input.RegisteredByID
@@ -144,7 +204,7 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 			}
 		}
 
-		// 2. Upsert guest
+		// 3. Upsert guest
 		docType := input.DocumentType
 		if docType == "" {
 			docType = "PASSPORT"
@@ -172,23 +232,19 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 			return fmt.Errorf("gorm: failed to upsert guest: %w", err)
 		}
 
-		// 3. Insert Stay record
+		// 4. Insert Stay record with exact integer-cents financial calculation
 		stayID := uuid.New()
 		totalNights := int(input.CheckOutDate.Sub(input.CheckInDate).Hours() / 24)
 		if totalNights < 1 {
 			totalNights = 1
 		}
-		totalAmount := input.NightlyRate * float64(totalNights)
-		paymentStatus := "PENDING"
-		if input.DepositAmount >= totalAmount {
-			paymentStatus = "PAID"
-		} else if input.DepositAmount > 0 {
-			paymentStatus = "PARTIAL"
-		}
-
-		status := "ACTIVE"
-		if input.CheckInDate.After(time.Now().UTC().Add(2 * time.Hour)) {
-			status = "RESERVED"
+		depositAmount := stay.RoundCurrency(input.DepositAmount)
+		totalAmount := stay.RoundCurrency(nightlyRate * float64(totalNights))
+		paymentStatus := string(stay.PaymentPending)
+		if stay.ToCents(depositAmount) >= stay.ToCents(totalAmount) {
+			paymentStatus = string(stay.PaymentPaid)
+		} else if stay.ToCents(depositAmount) > 0 {
+			paymentStatus = string(stay.PaymentPartial)
 		}
 
 		insertStayQuery := `
@@ -197,30 +253,28 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 				stay_period, status, nightly_rate, total_nights, deposit_amount, total_amount, payment_status, notes
 			) VALUES (
 				?, ?, ?, NULL, ?,
-				tstzrange(?, ?), ?, ?, ?, ?, ?, ?, ?
+				tstzrange(?, ?, '[)'), ?, ?, ?, ?, ?, ?, ?
 			)
 		`
 		if err := tx.Exec(insertStayQuery,
 			stayID, input.RoomID, guestID, userID,
 			input.CheckInDate, input.CheckOutDate,
-			status, input.NightlyRate, totalNights, input.DepositAmount, totalAmount, paymentStatus, input.Notes,
+			status, nightlyRate, totalNights, depositAmount, totalAmount, paymentStatus, input.Notes,
 		).Error; err != nil {
-			if strings.Contains(err.Error(), "stays_room_period_exclusion") {
+			if strings.Contains(err.Error(), "stays_room_period_exclusion") || strings.Contains(err.Error(), "23P01") {
 				return stay.ErrRoomAlreadyBooked
 			}
 			return fmt.Errorf("gorm: failed to insert stay: %w", err)
 		}
 
-		// 4. Update Room status
-		roomStatus := "OCCUPIED"
-		if status == "RESERVED" {
-			roomStatus = "AVAILABLE"
-		}
-		if err := tx.Exec("UPDATE rooms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomStatus, input.RoomID).Error; err != nil {
-			return fmt.Errorf("gorm: failed to update room status: %w", err)
+		// 5. Update physical room status ONLY when guest is actively checking in today
+		if status == string(stay.StatusActive) {
+			if err := tx.Exec("UPDATE rooms SET status = 'OCCUPIED', updated_at = CURRENT_TIMESTAMP WHERE id = ?", input.RoomID).Error; err != nil {
+				return fmt.Errorf("gorm: failed to update room status: %w", err)
+			}
 		}
 
-		// 5. Outbox Event (Transactional Outbox Pattern)
+		// 6. Outbox Event (Transactional Outbox Pattern with PII minimization)
 		var traceID string
 		span := trace.SpanFromContext(ctx)
 		if span.SpanContext().IsValid() {
@@ -231,7 +285,7 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 			"stay_id":        stayID.String(),
 			"room_id":        input.RoomID.String(),
 			"guest_name":     input.GuestName,
-			"guest_email":    input.GuestEmail,
+			"guest_email":    maskEmailPII(input.GuestEmail),
 			"status":         status,
 			"check_in":       input.CheckInDate,
 			"check_out":      input.CheckOutDate,
@@ -248,7 +302,7 @@ func (r *GormStayRepository) Create(ctx context.Context, input stay.CreateStayIn
 			return fmt.Errorf("gorm: failed to insert stay outbox event: %w", err)
 		}
 
-		// 6. Fetch created Stay Details
+		// 7. Fetch created Stay Details
 		query := `
 			SELECT 
 				s.id, s.room_id, s.primary_guest_id, s.cash_shift_id, s.registered_by_user_id,
@@ -294,66 +348,118 @@ func (r *GormStayRepository) Update(ctx context.Context, id uuid.UUID, input sta
 		return nil, errors.New("database connection unavailable")
 	}
 
-	current, err := r.FindByID(ctx, id)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var checkIn, checkOut time.Time
+		var nights int
+		var rate, deposit float64
+		var notes, status string
+		var roomID uuid.UUID
+
+		row := tx.Raw(`
+			SELECT room_id, lower(stay_period), upper(stay_period), total_nights, nightly_rate, deposit_amount, COALESCE(notes, ''), status
+			FROM stays
+			WHERE id = ?
+			FOR UPDATE
+		`, id).Row()
+		if err := row.Scan(&roomID, &checkIn, &checkOut, &nights, &rate, &deposit, &notes, &status); err != nil {
+			return stay.ErrStayNotFound
+		}
+
+		if status == string(stay.StatusCheckedOut) || status == string(stay.StatusCancelled) {
+			return stay.ErrStayAlreadyFinished
+		}
+
+		if input.CheckInDate != nil {
+			checkIn = *input.CheckInDate
+		}
+		if input.CheckOutDate != nil {
+			checkOut = *input.CheckOutDate
+		}
+		if !checkOut.After(checkIn) {
+			return stay.ErrInvalidDateRange
+		}
+
+		if input.TotalNights != nil && *input.TotalNights >= 1 {
+			nights = *input.TotalNights
+		} else if input.CheckInDate != nil || input.CheckOutDate != nil {
+			computedNights := int(checkOut.Sub(checkIn).Hours() / 24)
+			if computedNights >= 1 {
+				nights = computedNights
+			}
+		}
+
+		if input.NightlyRate != nil && *input.NightlyRate > 0 {
+			rate = stay.RoundCurrency(*input.NightlyRate)
+		}
+		if input.DepositAmount != nil && *input.DepositAmount >= 0 {
+			deposit = stay.RoundCurrency(*input.DepositAmount)
+		}
+		if input.Notes != nil {
+			notes = *input.Notes
+		}
+
+		// Include any incidental POS charges attached to this stay
+		var chargesSum float64
+		_ = tx.Raw(`
+			SELECT COALESCE(SUM(total_price), 0)
+			FROM stay_charges
+			WHERE stay_id = ? AND description NOT LIKE 'Initial Stay Deposit%'
+		`, id).Row().Scan(&chargesSum)
+
+		total := stay.RoundCurrency(float64(nights)*rate + chargesSum)
+		pStatus := stay.PaymentPending
+		if stay.ToCents(deposit) >= stay.ToCents(total) {
+			pStatus = stay.PaymentPaid
+		} else if stay.ToCents(deposit) > 0 {
+			pStatus = stay.PaymentPartial
+		}
+
+		updateQuery := `
+			UPDATE stays
+			SET 
+				stay_period = tstzrange(?, ?, '[)'),
+				total_nights = ?,
+				nightly_rate = ?,
+				deposit_amount = ?,
+				total_amount = ?,
+				payment_status = ?,
+				notes = ?,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`
+		if err := tx.Exec(updateQuery, checkIn, checkOut, nights, rate, deposit, total, string(pStatus), notes, id).Error; err != nil {
+			if strings.Contains(err.Error(), "exclusion") || strings.Contains(err.Error(), "23P01") {
+				return stay.ErrRoomAlreadyBooked
+			}
+			return fmt.Errorf("gorm: failed to update stay: %w", err)
+		}
+
+		var traceID string
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			traceID = span.SpanContext().TraceID().String()
+		}
+		payloadBytes, _ := json.Marshal(map[string]interface{}{
+			"stay_id":        id.String(),
+			"room_id":        roomID.String(),
+			"status":         status,
+			"total_amount":   total,
+			"deposit_amount": deposit,
+			"payment_status": string(pStatus),
+			"action":         "UPDATED",
+			"timestamp":      time.Now().UTC(),
+		})
+		if err := tx.Exec(`
+			INSERT INTO stay_outbox_events (id, aggregate_type, aggregate_id, event_type, payload, trace_id, status)
+			VALUES (?, 'STAY', ?, 'STAY_UPDATED', ?, ?, 'PENDING')
+		`, uuid.New(), id, string(payloadBytes), traceID).Error; err != nil {
+			return fmt.Errorf("gorm: failed to insert stay update outbox event: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
-	}
-
-	checkIn := current.CheckInDate
-	if input.CheckInDate != nil {
-		checkIn = *input.CheckInDate
-	}
-	checkOut := current.CheckOutDate
-	if input.CheckOutDate != nil {
-		checkOut = *input.CheckOutDate
-	}
-	if !checkOut.After(checkIn) {
-		return nil, stay.ErrInvalidDateRange
-	}
-
-	nights := current.TotalNights
-	if input.TotalNights != nil && *input.TotalNights >= 1 {
-		nights = *input.TotalNights
-	}
-	rate := current.NightlyRate
-	if input.NightlyRate != nil && *input.NightlyRate > 0 {
-		rate = *input.NightlyRate
-	}
-	deposit := current.DepositAmount
-	if input.DepositAmount != nil && *input.DepositAmount >= 0 {
-		deposit = *input.DepositAmount
-	}
-	notes := current.Notes
-	if input.Notes != nil {
-		notes = *input.Notes
-	}
-
-	total := float64(nights) * rate
-	pStatus := stay.PaymentPending
-	if deposit >= total {
-		pStatus = stay.PaymentPaid
-	} else if deposit > 0 {
-		pStatus = stay.PaymentPartial
-	}
-
-	query := `
-		UPDATE stays
-		SET 
-			stay_period = tstzrange(?, ?, '[)'),
-			total_nights = ?,
-			nightly_rate = ?,
-			deposit_amount = ?,
-			total_amount = ?,
-			payment_status = ?,
-			notes = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`
-	if err := r.db.WithContext(ctx).Exec(query, checkIn, checkOut, nights, rate, deposit, total, string(pStatus), notes, id).Error; err != nil {
-		if strings.Contains(err.Error(), "exclusion") || strings.Contains(err.Error(), "23P01") {
-			return nil, stay.ErrRoomAlreadyBooked
-		}
-		return nil, fmt.Errorf("gorm: failed to update stay: %w", err)
 	}
 
 	return r.FindByID(ctx, id)
@@ -366,16 +472,28 @@ func (r *GormStayRepository) Cancel(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Row().Scan(&roomID); err != nil || roomID == uuid.Nil {
+		var currentStatus string
+		if err := tx.Raw("SELECT room_id, status FROM stays WHERE id = ? FOR UPDATE", id).Row().Scan(&roomID, &currentStatus); err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
+		}
+
+		if currentStatus == string(stay.StatusCheckedOut) || currentStatus == string(stay.StatusCancelled) {
+			return stay.ErrStayAlreadyFinished
 		}
 
 		if err := tx.Exec("UPDATE stays SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id).Error; err != nil {
 			return fmt.Errorf("gorm: failed to cancel stay: %w", err)
 		}
 
-		if err := tx.Exec("UPDATE rooms SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", roomID).Error; err != nil {
-			return fmt.Errorf("gorm: failed to release room on cancel: %w", err)
+		// Only release physical room to AVAILABLE if the cancelled stay was ACTIVE and no other ACTIVE stay occupies that room
+		if currentStatus == string(stay.StatusActive) {
+			var otherActiveCount int64
+			_ = tx.Raw("SELECT COUNT(*) FROM stays WHERE room_id = ? AND status = 'ACTIVE' AND id <> ?", roomID, id).Row().Scan(&otherActiveCount)
+			if otherActiveCount == 0 {
+				if err := tx.Exec("UPDATE rooms SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'OCCUPIED'", roomID).Error; err != nil {
+					return fmt.Errorf("gorm: failed to release room on cancel: %w", err)
+				}
+			}
 		}
 
 		var traceID string
@@ -407,11 +525,29 @@ func (r *GormStayRepository) CheckOut(ctx context.Context, id uuid.UUID) error {
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roomID uuid.UUID
-		if err := tx.Raw("SELECT room_id FROM stays WHERE id = ?", id).Row().Scan(&roomID); err != nil || roomID == uuid.Nil {
+		var currentStatus, paymentStatus string
+		var depositAmount, totalAmount float64
+
+		err := tx.Raw(`
+			SELECT room_id, status, deposit_amount, total_amount, payment_status
+			FROM stays
+			WHERE id = ?
+			FOR UPDATE
+		`, id).Row().Scan(&roomID, &currentStatus, &depositAmount, &totalAmount, &paymentStatus)
+		if err != nil || roomID == uuid.Nil {
 			return stay.ErrStayNotFound
 		}
 
-		if err := tx.Exec("UPDATE stays SET status = 'CHECKED_OUT', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id).Error; err != nil {
+		if currentStatus == string(stay.StatusCheckedOut) || currentStatus == string(stay.StatusCancelled) {
+			return stay.ErrStayAlreadyFinished
+		}
+
+		// Enforce Zero-Balance Departure Policy on the backend
+		if paymentStatus != string(stay.PaymentPaid) && stay.ToCents(depositAmount) < stay.ToCents(totalAmount) {
+			return stay.ErrOutstandingBalance
+		}
+
+		if err := tx.Exec("UPDATE stays SET status = 'CHECKED_OUT', payment_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id).Error; err != nil {
 			return fmt.Errorf("gorm: failed to checkout stay: %w", err)
 		}
 
@@ -449,20 +585,21 @@ func (r *GormStayRepository) Save(ctx context.Context, s *stay.Stay) error {
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"status", "deposit_amount", "total_amount", "payment_status", "notes", "updated_at"}),
-	}).Save(&StayModel{
+	}).Create(&StayModel{
 		ID:                 s.ID,
 		RoomID:             s.RoomID,
 		PrimaryGuestID:     s.PrimaryGuestID,
+		CashShiftID:        s.CashShiftID,
 		RegisteredByUserID: s.RegisteredByUserID,
 		StayPeriod:         fmt.Sprintf("[%s,%s)", s.CheckInDate.Format(time.RFC3339), s.CheckOutDate.Format(time.RFC3339)),
 		Status:             string(s.Status),
-		NightlyRate:        s.NightlyRate,
+		NightlyRate:        stay.RoundCurrency(s.NightlyRate),
 		TotalNights:        s.TotalNights,
-		DepositAmount:      s.DepositAmount,
-		TotalAmount:        s.TotalAmount,
+		DepositAmount:      stay.RoundCurrency(s.DepositAmount),
+		TotalAmount:        stay.RoundCurrency(s.TotalAmount),
 		PaymentStatus:      string(s.PaymentStatus),
 		Notes:              s.Notes,
 		CreatedAt:          s.CreatedAt,
-		UpdatedAt:          time.Now().UTC(),
+		UpdatedAt:          s.UpdatedAt,
 	}).Error
 }

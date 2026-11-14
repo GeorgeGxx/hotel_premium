@@ -57,11 +57,27 @@ func main() {
 	gormDB, err := postgres.NewGormDB(ctx, cfg)
 	if err != nil {
 		slog.Error("GORM database connection initialization failed", "error", err)
+		if strings.EqualFold(cfg.AppEnv, "production") {
+			os.Exit(1)
+		}
 	}
 	if gormDB != nil {
 		sqlDB, err := gormDB.DB()
 		if err == nil && sqlDB != nil {
 			defer sqlDB.Close()
+			handler.RegisterReadinessCheck("postgres", func(c context.Context) error {
+				return sqlDB.PingContext(c)
+			})
+		}
+		if strings.EqualFold(os.Getenv("AUTO_RUN_MIGRATIONS"), "true") || (len(os.Args) > 1 && os.Args[1] == "-migrate") {
+			if mErr := postgres.RunMigrations(ctx, gormDB, os.Getenv("MIGRATIONS_DIR")); mErr != nil {
+				slog.Error("Database migration failed", "error", mErr)
+				os.Exit(1)
+			}
+			if len(os.Args) > 1 && os.Args[1] == "-migrate" {
+				slog.Info("Migration CLI completed successfully")
+				return
+			}
 		}
 	}
 
@@ -74,13 +90,22 @@ func main() {
 		defer dbPool.Close()
 	}
 
+	// Redis client for distributed Idempotency locking and Cache-Aside
+	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
+	if err == nil && redisClient != nil {
+		defer redisClient.Close()
+		handler.RegisterReadinessCheck("redis", func(c context.Context) error {
+			return redisClient.Ping(c).Err()
+		})
+	}
+
 	// Initialize Repositories
 	stayRepo := postgres.NewGormStayRepository(gormDB)
-	roomRepo := postgres.NewGormRoomRepository(gormDB)
+	roomRepo := postgres.NewGormRoomRepository(gormDB).WithCache(redis.NewCacheManager(redisClient))
 	billingRepo := postgres.NewGormBillingRepository(gormDB)
 	auditRepo := postgres.NewAuditRepository(gormDB)
 
-	stayHandler := handler.NewStayHandler(stayRepo)
+	stayHandler := handler.NewStayHandler(stayRepo).WithBroadcaster(infraHttp.GlobalSSEHub.Broadcast)
 
 	// Saga Orchestrator for distributed booking with compensating transactions
 	sagaOrchestrator := saga.NewBookingSagaOrchestrator(
@@ -97,12 +122,6 @@ func main() {
 		go outboxPublisher.Start(ctx)
 	}
 
-	// Redis 8.8.1 client for distributed Idempotency locking and Cache-Aside
-	redisClient, err := redis.NewClient(ctx, cfg.RedisAddr, cfg.RedisPassword, 0)
-	if err == nil && redisClient != nil {
-		defer redisClient.Close()
-	}
-
 	// Gin v1.12.0 Engine with Tracing, Metrics, SSE, Saga Orchestrator & Idempotency
 	ginEngine := infraHttp.NewGinStayEngine(stayHandler, sagaOrchestrator, redisClient)
 
@@ -110,7 +129,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      ginEngine,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 0, // Zero WriteTimeout to support long-lived SSE event streams alongside per-request context timeouts
 		IdleTimeout:  60 * time.Second,
 	}
 

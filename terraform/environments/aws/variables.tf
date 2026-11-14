@@ -59,16 +59,26 @@ variable "db_username" {
 }
 
 variable "db_password" {
-  description = "Master password for RDS PostgreSQL (injected via TF_VAR_db_password or Secrets Manager)"
+  description = "Master password for RDS PostgreSQL (injected via TF_VAR_db_password or AWS Secrets Manager)"
   type        = string
-  default     = "ChangeMeInVaultOrTFVars2026!"
   sensitive   = true
+
+  validation {
+    condition     = length(var.db_password) >= 16
+    error_message = "db_password must be at least 16 characters long."
+  }
 }
 
 variable "redis_node_type" {
   description = "Amazon ElastiCache Redis node type"
   type        = string
   default     = "cache.t4g.micro"
+}
+
+variable "msk_instance_type" {
+  description = "Amazon MSK Kafka broker instance type"
+  type        = string
+  default     = "kafka.t3.small"
 }
 
 variable "github_repository" {

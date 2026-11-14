@@ -9,7 +9,7 @@ upstreams:
     healthchecks:
       active:
         type: http
-        http_path: /api/v1/health
+        http_path: /api/v1/ready
         healthy:
           interval: 5
           http_statuses: [200]
@@ -36,7 +36,7 @@ upstreams:
     healthchecks:
       active:
         type: http
-        http_path: /api/v1/health
+        http_path: /api/v1/ready
         healthy:
           interval: 5
           http_statuses: [200]
@@ -63,7 +63,7 @@ upstreams:
     healthchecks:
       active:
         type: http
-        http_path: /api/v1/health
+        http_path: /api/v1/ready
         healthy:
           interval: 5
           http_statuses: [200]
@@ -90,7 +90,7 @@ upstreams:
     healthchecks:
       active:
         type: http
-        http_path: /api/v1/health
+        http_path: /api/v1/ready
         healthy:
           interval: 5
           http_statuses: [200]
@@ -126,6 +126,10 @@ services:
     protocol: http
     port: 80
     path: /
+    connect_timeout: 5000
+    read_timeout: 30000
+    write_timeout: 30000
+    retries: 2
     routes:
       - name: frontend-root-route
         paths:
@@ -141,11 +145,16 @@ services:
     protocol: http
     port: 8081
     path: /
+    connect_timeout: 5000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 2
     routes:
       - name: room-routes
         paths:
           - /api/v1/rooms
           - /api/v1/health
+          - /api/v1/ready
         strip_path: false
         protocols:
           - http
@@ -157,6 +166,10 @@ services:
     protocol: http
     port: 8082
     path: /
+    connect_timeout: 5000
+    read_timeout: 3600000
+    write_timeout: 30000
+    retries: 1
     routes:
       - name: stay-routes
         paths:
@@ -173,6 +186,10 @@ services:
     protocol: http
     port: 8083
     path: /
+    connect_timeout: 5000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 1
     routes:
       - name: billing-routes
         paths:
@@ -182,16 +199,21 @@ services:
           - http
           - https
 
-  # 5. Decoupled Microservice: Notification Worker
+  # 5. Decoupled Microservice: Notification Worker & DLQ Admin
   - name: notification-worker
     host: notification-upstream
     protocol: http
     port: 8084
     path: /
+    connect_timeout: 5000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 1
     routes:
       - name: notification-routes
         paths:
           - /api/v1/notifications
+          - /api/v1/dlq
         strip_path: false
         protocols:
           - http
@@ -203,6 +225,10 @@ services:
     protocol: http
     port: 8080
     path: /
+    connect_timeout: 5000
+    read_timeout: 30000
+    write_timeout: 30000
+    retries: 2
     routes:
       - name: keycloak-auth-route
         paths:
@@ -249,11 +275,15 @@ plugins:
           - w3c
       http_response_header_for_traceid: X-Trace-Id
 
-  # 3. Cross-Origin Resource Sharing (CORS)
+  # 3. Cross-Origin Resource Sharing (CORS - Explicit Origin Allowlist)
   - name: cors
     config:
       origins:
-        - "*"
+        - "http://localhost:5173"
+        - "http://localhost:8000"
+        - "http://localhost:80"
+        - "http://localhost"
+        - "https://hotel-premium.internal"
       methods:
         - GET
         - POST
@@ -278,32 +308,41 @@ plugins:
         - X-Trace-Id
         - X-Correlation-ID
         - traceparent
-      credentials: false
+      credentials: true
       max_age: 3600
 
-  # 4. Global Anti-DoS Rate Limiting
+  # 4. Inbound Header Sanitization (Prevent Client Gateway-Secret Spoofing)
+  - name: request-transformer
+    config:
+      remove:
+        headers:
+          - X-Gateway-Secret
+
+  # 5. Global Anti-DoS Rate Limiting
   - name: rate-limiting
     config:
+      second: 30
       minute: 120
+      limit_by: ip
       policy: local
       fault_tolerant: true
       hide_client_headers: false
 
-  # 5. Request Size Limiting (10 MB max payload protection)
+  # 6. Request Size Limiting (10 MB max payload protection)
   - name: request-size-limiting
     config:
       allowed_payload_size: 10
       size_unit: megabytes
       require_content_length: false
 
-  # 6. Correlation ID Injection
+  # 7. Correlation ID Injection
   - name: correlation-id
     config:
       header_name: X-Correlation-ID
       generator: uuid#counter
       echo_downstream: true
 
-  # 7. Defensive HTTP Security Response Headers
+  # 8. Defensive HTTP Security Response Headers
   - name: response-transformer
     config:
       add:
@@ -312,3 +351,4 @@ plugins:
           - "X-Frame-Options: DENY"
           - "Referrer-Policy: strict-origin-when-cross-origin"
           - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
+          - "Strict-Transport-Security: max-age=31536000; includeSubDomains"

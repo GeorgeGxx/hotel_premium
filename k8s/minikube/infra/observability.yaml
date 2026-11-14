@@ -73,6 +73,46 @@ data:
               summary: "High Kafka consumer lag on group {{ $labels.consumergroup }}"
               description: "Kafka consumer group {{ $labels.consumergroup }} has lag > 50 messages on topic {{ $labels.topic }}."
 
+          - alert: KafkaDLQMessagesDetected
+            expr: increase(kafka_messages_dlq_total[5m]) > 0
+            for: 0m
+            labels:
+              severity: critical
+              tier: messaging
+            annotations:
+              summary: "Poison-pill message routed to Kafka DLQ ({{ $labels.dlq_topic }})"
+              description: "Unrecoverable message detected on {{ $labels.original_topic }} and routed to {{ $labels.dlq_topic }} (reason: {{ $labels.reason }})."
+
+          - alert: TransactionalOutboxBacklog
+            expr: hotel_outbox_pending_events > 25
+            for: 2m
+            labels:
+              severity: warning
+              tier: messaging
+            annotations:
+              summary: "Transactional Outbox pending events backlog is growing"
+              description: "More than 25 events have remained in PENDING state in outbox_events for over 2 minutes."
+
+          - alert: HotelHighErrorRateBurn
+            expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)) > 0.02
+            for: 2m
+            labels:
+              severity: critical
+              tier: application
+            annotations:
+              summary: "HTTP 5xx error rate exceeds 2% SLO threshold"
+              description: "Platform-wide 5xx error ratio has exceeded 2% over the last 5 minutes."
+
+          - alert: HotelHighP95Latency
+            expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path)) > 0.5
+            for: 3m
+            labels:
+              severity: warning
+              tier: application
+            annotations:
+              summary: "High P95 HTTP latency on {{ $labels.path }}"
+              description: "95th percentile HTTP request duration on {{ $labels.path }} exceeds 500ms."
+
           - alert: VaultInstanceDown
             expr: up{job="vault"} == 0
             for: 30s
@@ -118,7 +158,7 @@ data:
       - job_name: 'kong-gateway'
         metrics_path: /metrics
         static_configs:
-          - targets: ['kong-proxy.dev.svc.cluster.local:8001']
+          - targets: ['kong-proxy.dev.svc.cluster.local:8100']
 
       - job_name: 'hotel-microservices'
         metrics_path: /metrics
@@ -433,7 +473,7 @@ spec:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: "Admin"
+              value: "Viewer"
             - name: GF_FEATURE_TOGGLES_ENABLE
               value: "traceqlEditor,correlations,flameGraph"
           ports:

@@ -7,6 +7,13 @@ global:
   imageTag: "1.0.0"
   imagePullPolicy: IfNotPresent
 
+migrations:
+  enabled: true
+  image: georgegxx/hotel-stay-service:1.0.0
+
+secrets:
+  secretName: hotel-app-secrets
+
 autoscaling:
   enabled: true
   minReplicas: 2
@@ -38,7 +45,7 @@ services:
     replicas: 2
     port: 8081
     targetPort: 8081
-    readinessPath: /api/v1/health
+    readinessPath: /api/v1/ready
     livenessPath: /api/v1/health
     resources:
       limits:
@@ -57,7 +64,6 @@ services:
       DB_PORT: "5432"
       DB_NAME: hotel_db
       DB_USER: hotel_user
-      DB_PASSWORD: hotel_password
       REDIS_ADDR: redis.data.svc.cluster.local:6379
       OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.observability.svc.cluster.local:4317
@@ -68,7 +74,7 @@ services:
     replicas: 2
     port: 8082
     targetPort: 8082
-    readinessPath: /api/v1/health
+    readinessPath: /api/v1/ready
     livenessPath: /api/v1/health
     resources:
       limits:
@@ -87,7 +93,6 @@ services:
       DB_PORT: "5432"
       DB_NAME: hotel_db
       DB_USER: hotel_user
-      DB_PASSWORD: hotel_password
       REDIS_ADDR: redis.data.svc.cluster.local:6379
       KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
       KAFKA_STAY_TOPIC: hotel.stays.lifecycle.v1
@@ -100,7 +105,7 @@ services:
     replicas: 2
     port: 8083
     targetPort: 8083
-    readinessPath: /api/v1/health
+    readinessPath: /api/v1/ready
     livenessPath: /api/v1/health
     resources:
       limits:
@@ -119,7 +124,6 @@ services:
       DB_PORT: "5432"
       DB_NAME: hotel_db
       DB_USER: hotel_user
-      DB_PASSWORD: hotel_password
       REDIS_ADDR: redis.data.svc.cluster.local:6379
       KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
       OTEL_COLLECTOR_URL: alloy.observability.svc.cluster.local:4317
@@ -128,10 +132,10 @@ services:
   notificationWorker:
     name: notification-worker
     image: georgegxx/hotel-notification-worker:1.0.0
-    replicas: 1
+    replicas: 2
     port: 8084
     targetPort: 8084
-    readinessPath: /api/v1/health
+    readinessPath: /api/v1/ready
     livenessPath: /api/v1/health
     resources:
       limits:

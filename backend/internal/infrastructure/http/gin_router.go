@@ -3,7 +3,9 @@ package http
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +19,15 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func isProbeOrMetricsPath(p string) bool {
+	switch p {
+	case "/metrics", "/api/v1/health", "/health", "/healthz", "/api/v1/ready", "/ready", "/readyz":
+		return true
+	default:
+		return false
+	}
+}
 
 // GinAdapter bridges Go 1.26 http.HandlerFunc to Gin v1.12.0 gin.HandlerFunc
 // synchronizing Gin path parameters into r.SetPathValue for seamless handler execution
@@ -34,7 +45,6 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
 
 		c.Next()
 
@@ -44,16 +54,12 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 			traceID = span.SpanContext().TraceID().String()
 		}
 
-		if raw != "" {
-			path = path + "?" + raw
-		}
-
 		duration := time.Since(start)
 		route := c.FullPath()
 		if route == "" {
 			route = c.Request.URL.Path
 		}
-		if route != "/metrics" && route != "/api/v1/health" && route != "/health" {
+		if !isProbeOrMetricsPath(route) {
 			statusStr := strconv.Itoa(c.Writer.Status())
 			telemetry.HTTPRequestsTotal.WithLabelValues(serviceName, c.Request.Method, route, statusStr).Inc()
 			telemetry.HTTPRequestDurationSeconds.WithLabelValues(serviceName, c.Request.Method, route).Observe(duration.Seconds())
@@ -67,6 +73,7 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 			"client_ip", c.ClientIP(),
 			"latency_ms", duration.Milliseconds(),
 			"trace_id", traceID,
+			"correlation_id", c.GetHeader("X-Correlation-ID"),
 		)
 	}
 }
@@ -74,7 +81,7 @@ func GinStructuredLogger(serviceName string) gin.HandlerFunc {
 // GinTelemetryMiddleware extracts distributed tracing context and starts server spans in Tempo
 func GinTelemetryMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if telemetry.Tracer == nil || c.Request.URL.Path == "/metrics" || c.Request.URL.Path == "/api/v1/health" || c.Request.URL.Path == "/health" {
+		if telemetry.Tracer == nil || isProbeOrMetricsPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
@@ -95,12 +102,31 @@ func GinTelemetryMiddleware(serviceName string) gin.HandlerFunc {
 	}
 }
 
-// GinCORSMiddleware ensures unified CORS and defensive HTTP security headers across all microservices
+// GinCORSMiddleware enforces explicit CORS origin allowlists and defensive HTTP security headers
 func GinCORSMiddleware() gin.HandlerFunc {
+	rawOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if rawOrigins == "" {
+		rawOrigins = "http://localhost:5173,http://localhost:8000,http://localhost:80,http://127.0.0.1:5173,http://127.0.0.1:8000,https://hotel-premium.internal"
+	}
+	allowedOrigins := make(map[string]bool)
+	for _, o := range strings.Split(rawOrigins, ",") {
+		trimmed := strings.TrimSpace(o)
+		if trimmed != "" {
+			allowedOrigins[trimmed] = true
+		}
+	}
+
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if origin != "" && allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		} else if !strings.EqualFold(os.Getenv("APP_ENV"), "production") && origin == "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, X-User-Role, Idempotency-Key, X-Idempotency-Key, X-Correlation-ID")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, traceparent, tracestate, X-User-Role, Idempotency-Key, X-Idempotency-Key, X-Correlation-ID")
 		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 		c.Writer.Header().Set("X-Frame-Options", "DENY")
 		c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -124,15 +150,22 @@ func NewGinBaseEngine(serviceName string) *gin.Engine {
 	engine.Use(GinTelemetryMiddleware(serviceName))
 	engine.Use(GinStructuredLogger(serviceName))
 
-	// System & Observability endpoints
+	// Liveness & Readiness Probes + Prometheus Metrics
 	engine.GET("/api/v1/health", GinAdapter(handler.HealthCheck))
+	engine.GET("/healthz", GinAdapter(handler.HealthCheck))
+	engine.GET("/api/v1/ready", GinAdapter(handler.ReadinessCheck))
+	engine.GET("/readyz", GinAdapter(handler.ReadinessCheck))
 	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Interactive OpenAPI / Swagger Documentation UI
 	swagger.RegisterSwaggerUI(engine, serviceName)
 
-	// Server-Sent Events (SSE) Live Feed for real-time front desk updates
-	engine.GET("/api/v1/events/live", GlobalSSEHub.Handler())
+	// Server-Sent Events (SSE) Live Feed (Protected by RBAC)
+	engine.GET(
+		"/api/v1/events/live",
+		GinRBACMiddleware(RoleAdmin, RoleManager, RoleReceptionist, RoleHousekeeping, RoleUser),
+		GlobalSSEHub.Handler(),
+	)
 
 	return engine
 }
@@ -145,28 +178,33 @@ func RegisterRoomRoutes(group *gin.RouterGroup, roomHandler *handler.RoomHandler
 	if roomHandler == nil {
 		return
 	}
+	staffRoles := GinRBACMiddleware(RoleAdmin, RoleManager, RoleReceptionist, RoleHousekeeping, RoleUser)
+	adminRoles := GinRBACMiddleware(RoleAdmin, RoleManager)
+
 	group.GET("", GinAdapter(roomHandler.ListRooms))
 	group.GET("/:id", GinAdapter(roomHandler.GetRoomByID))
-	group.PATCH("/:id/status", GinAdapter(roomHandler.UpdateRoomStatus))
-	group.PATCH("/:id/price", GinRBACMiddleware(RoleAdmin), GinAdapter(roomHandler.UpdateRoomPrice))
+	group.PATCH("/:id/status", staffRoles, GinAdapter(roomHandler.UpdateRoomStatus))
+	group.PATCH("/:id/price", adminRoles, GinAdapter(roomHandler.UpdateRoomPrice))
 }
 
 func RegisterStayRoutes(group *gin.RouterGroup, stayHandler *handler.StayHandler, sagaOrchestrator *saga.BookingSagaOrchestrator) {
 	if stayHandler == nil {
 		return
 	}
-	group.GET("", GinAdapter(stayHandler.ListStays))
-	group.GET("/:id", GinAdapter(stayHandler.GetStayByID))
-	group.POST("", GinAdapter(stayHandler.CreateStay))
-	group.POST("/check-in", GinAdapter(stayHandler.CreateStay))
-	group.PUT("/:id", GinAdapter(stayHandler.UpdateStay))
-	group.PATCH("/:id", GinAdapter(stayHandler.UpdateStay))
-	group.PATCH("/:id/cancel", GinAdapter(stayHandler.CancelStay))
-	group.DELETE("/:id", GinAdapter(stayHandler.CancelStay))
-	group.POST("/:id/check-out", GinAdapter(stayHandler.CheckOutStay))
+	frontDeskRoles := GinRBACMiddleware(RoleAdmin, RoleManager, RoleReceptionist, RoleUser)
+
+	group.GET("", frontDeskRoles, GinAdapter(stayHandler.ListStays))
+	group.GET("/:id", frontDeskRoles, GinAdapter(stayHandler.GetStayByID))
+	group.POST("", frontDeskRoles, GinAdapter(stayHandler.CreateStay))
+	group.POST("/check-in", frontDeskRoles, GinAdapter(stayHandler.CreateStay))
+	group.PUT("/:id", frontDeskRoles, GinAdapter(stayHandler.UpdateStay))
+	group.PATCH("/:id", frontDeskRoles, GinAdapter(stayHandler.UpdateStay))
+	group.PATCH("/:id/cancel", frontDeskRoles, GinAdapter(stayHandler.CancelStay))
+	group.DELETE("/:id", frontDeskRoles, GinAdapter(stayHandler.CancelStay))
+	group.POST("/:id/check-out", frontDeskRoles, GinAdapter(stayHandler.CheckOutStay))
 
 	if sagaOrchestrator != nil {
-		group.POST("/saga-booking", func(c *gin.Context) {
+		group.POST("/saga-booking", frontDeskRoles, func(c *gin.Context) {
 			var req handler.CreateStayRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid saga booking payload"})
@@ -179,13 +217,10 @@ func RegisterStayRoutes(group *gin.RouterGroup, stayHandler *handler.StayHandler
 				return
 			}
 
+			// Always use verified role resolved by GinRBACMiddleware; never read raw X-User-Role
 			userRole := c.GetString("user_role")
 			if userRole == "" {
-				if hdrRole := c.GetHeader("X-User-Role"); hdrRole != "" {
-					userRole = normalizeRole(hdrRole)
-				} else {
-					userRole = RoleUser
-				}
+				userRole = RoleUser
 			}
 
 			result, err := sagaOrchestrator.Execute(c.Request.Context(), input, userRole)
@@ -203,13 +238,16 @@ func RegisterBillingRoutes(group *gin.RouterGroup, billingHandler *handler.Billi
 	if billingHandler == nil {
 		return
 	}
+	frontDeskRoles := GinRBACMiddleware(RoleAdmin, RoleManager, RoleReceptionist, RoleUser)
+	adminRoles := GinRBACMiddleware(RoleAdmin, RoleManager)
+
 	group.GET("", GinAdapter(billingHandler.ListProducts))
 	group.GET("/", GinAdapter(billingHandler.ListProducts))
 	group.GET("/products", GinAdapter(billingHandler.ListProducts))
-	group.POST("/charges", GinAdapter(billingHandler.AddStayCharge))
-	group.GET("/stays/:id/charges", GinAdapter(billingHandler.ListStayCharges))
-	group.POST("/shifts/open", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.OpenCashShift))
-	group.POST("/shifts/:id/close", GinRBACMiddleware(RoleAdmin), GinAdapter(billingHandler.CloseCashShift))
+	group.POST("/charges", frontDeskRoles, GinAdapter(billingHandler.AddStayCharge))
+	group.GET("/stays/:id/charges", frontDeskRoles, GinAdapter(billingHandler.ListStayCharges))
+	group.POST("/shifts/open", adminRoles, GinAdapter(billingHandler.OpenCashShift))
+	group.POST("/shifts/:id/close", adminRoles, GinAdapter(billingHandler.CloseCashShift))
 }
 
 // ==============================================================================

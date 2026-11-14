@@ -439,37 +439,36 @@ services:
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
-      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+      KONG_ADMIN_GUI_LISTEN: "127.0.0.1:8002"
       KONG_ADMIN_GUI_URL: "http://localhost:8002"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
       KONG_TRACING_INSTRUMENTATIONS: "all"
       KONG_TRACING_SAMPLING_RATE: "1.0"
     volumes:
       - ./infrastructure/kong/kong.yaml:/etc/kong/kong.yaml:ro
     ports:
-      - "${KONG_PROXY_PORT:-8000}:8000"   # Kong Gateway Public Ingress (Frontend, API, Auth)
-      - "${KONG_ADMIN_PORT:-8001}:8001"   # Kong Admin & Prometheus Metrics
-      - "${KONG_MANAGER_PORT:-8002}:8002" # Kong Manager Dashboard GUI
+      - "${KONG_PROXY_PORT:-8000}:8000"            # Kong Gateway Public Ingress (Frontend, API, Auth)
+      - "127.0.0.1:${KONG_ADMIN_PORT:-8001}:8001"   # Kong Admin (Loopback Only)
+      - "127.0.0.1:${KONG_MANAGER_PORT:-8002}:8002" # Kong Manager Dashboard GUI (Loopback Only)
     networks:
       - hotel_net
 
   # ============================================================================
-  # 7. OBSERVABILITY SUITE (OpenTelemetry Collector, Prometheus, Loki, Tempo, Alloy, Grafana)
+  # 7. OBSERVABILITY SUITE (Grafana Alloy, Prometheus, Alertmanager, Loki, Tempo, Grafana)
   # ============================================================================
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.159.0
-    container_name: otel-collector
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: alertmanager
     restart: unless-stopped
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     volumes:
-      - ./infrastructure/otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./infrastructure/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8888:8888"   # Collector internal metrics
-      - "8889:8889"   # Prometheus metrics exporter
-      - "13133:13133" # Health check extension
+      - "${ALERTMANAGER_PORT:-9093}:9093"
     networks:
       - hotel_net
 
@@ -537,8 +536,11 @@ services:
       - "--storage.path=/var/lib/alloy/data"
     volumes:
       - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "${ALLOY_PORT:-3300}:3300"
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
     networks:
       - hotel_net
 

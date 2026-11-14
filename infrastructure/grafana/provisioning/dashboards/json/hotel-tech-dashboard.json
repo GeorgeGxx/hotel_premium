@@ -124,7 +124,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(kong_http_requests_total[1m])) or vector(0)",
+          "expr": "sum(rate(kong_http_requests_total[1m]))",
           "refId": "A"
         }
       ],
@@ -157,7 +157,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "(sum(rate(kong_http_requests_total{code=~\"5..\"}[1m])) / (sum(rate(kong_http_requests_total[1m])) > 0) * 100) or vector(0)",
+          "expr": "(sum(rate(kong_http_requests_total{code=~\"5..\"}[1m])) / (sum(rate(kong_http_requests_total[1m])) > 0) * 100)",
           "refId": "A"
         }
       ],
@@ -195,7 +195,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(hotel_sse_active_clients) or vector(1)",
+          "expr": "sum(hotel_sse_active_clients)",
           "refId": "A"
         }
       ],
@@ -230,17 +230,17 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(1.8)",
+          "expr": "histogram_quantile(0.50, sum(rate(kong_request_latency_ms_bucket[1m])) by (le))",
           "legendFormat": "P50 Latency",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(4.2)",
+          "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[1m])) by (le))",
           "legendFormat": "P95 Latency",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le)) or vector(8.6)",
+          "expr": "histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket[1m])) by (le))",
           "legendFormat": "P99 Latency",
           "refId": "C"
         }
@@ -297,7 +297,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, service, route) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))) or vector(0.004)",
+          "expr": "histogram_quantile(0.95, sum by (le, service, route) (rate(hotel_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
           "legendFormat": "P95 {{service}} {{route}}",
           "refId": "A"
         }
@@ -355,7 +355,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(kafka_brokers) or vector(1)",
+          "expr": "max(kafka_brokers)",
           "refId": "A"
         }
       ],
@@ -389,7 +389,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(kafka_topic_partition_under_replicated_partition) or vector(0)",
+          "expr": "sum(kafka_topic_partition_under_replicated_partition)",
           "refId": "A"
         }
       ],
@@ -448,12 +448,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(kafka_consumer_retries_total) or vector(0)",
+          "expr": "sum(kafka_consumer_retries_total)",
           "legendFormat": "Backoff Retries",
           "refId": "A"
         },
         {
-          "expr": "sum(kafka_messages_dlq_total) or vector(0)",
+          "expr": "sum(kafka_messages_dlq_total)",
           "legendFormat": "Poison-Pill DLQ",
           "refId": "B"
         }
@@ -526,7 +526,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])), 0.0001)) * 100 or vector(99.4)",
+          "expr": "(sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])), 0.0001)) * 100",
           "refId": "A"
         }
       ],
@@ -564,7 +564,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(redis_commands_processed_total[1m])) or vector(1.5)",
+          "expr": "sum(rate(redis_commands_processed_total[1m]))",
           "refId": "A"
         }
       ],
@@ -596,7 +596,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "((sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)) * 100) > 0 or vector(96.8)",
+          "expr": "((sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)) * 100) > 0",
           "refId": "A"
         }
       ],

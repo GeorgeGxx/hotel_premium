@@ -12,14 +12,13 @@ terraform {
     }
   }
 
-  # Production remote state backend (uncomment or pass -backend-config in CI/CD):
-  # backend "s3" {
-  #   bucket       = "hotel-premium-terraform-state"
-  #   key          = "eks/terraform.tfstate"
-  #   region       = "us-east-1"
-  #   encrypt      = true
-  #   use_lockfile = true
-  # }
+  backend "s3" {
+    bucket       = "hotel-premium-terraform-state"
+    key          = "eks/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

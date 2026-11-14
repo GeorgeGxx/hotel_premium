@@ -2,11 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hotelpremium/backend/internal/domain/billing"
+	"github.com/hotelpremium/backend/internal/domain/stay"
 )
 
 type BillingHandler struct {
@@ -49,27 +52,54 @@ func (h *BillingHandler) AddStayCharge(w http.ResponseWriter, r *http.Request) {
 
 	var productUUID *uuid.UUID
 	if payload.ProductID != nil && *payload.ProductID != "" {
-		if pid, err := uuid.Parse(*payload.ProductID); err == nil {
-			productUUID = &pid
+		pid, err := uuid.Parse(*payload.ProductID)
+		if err != nil {
+			http.Error(w, `{"error":"invalid product_id"}`, http.StatusBadRequest)
+			return
 		}
+		productUUID = &pid
 	}
 
 	if payload.Quantity < 1 {
 		payload.Quantity = 1
 	}
 
+	if productUUID == nil {
+		if payload.UnitPrice <= 0 {
+			http.Error(w, `{"error":"unit_price must be greater than zero"}`, http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(payload.Description) == "" {
+			http.Error(w, `{"error":"description is required for custom folio charges"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	unitPrice := stay.RoundCurrency(payload.UnitPrice)
 	charge := &billing.StayCharge{
 		ID:          uuid.New(),
 		StayID:      stayUUID,
 		ProductID:   productUUID,
-		Description: payload.Description,
+		Description: strings.TrimSpace(payload.Description),
 		Quantity:    payload.Quantity,
-		UnitPrice:   payload.UnitPrice,
-		TotalPrice:  float64(payload.Quantity) * payload.UnitPrice,
+		UnitPrice:   unitPrice,
+		TotalPrice:  stay.RoundCurrency(float64(payload.Quantity) * unitPrice),
 		CreatedAt:   time.Now().UTC(),
 	}
 
 	if err := h.billingRepo.AddCharge(r.Context(), charge); err != nil {
+		if errors.Is(err, billing.ErrProductNotFound) {
+			http.Error(w, `{"error":"product not found"}`, http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, billing.ErrInsufficientStock) {
+			http.Error(w, `{"error":"insufficient product stock"}`, http.StatusConflict)
+			return
+		}
+		if errors.Is(err, billing.ErrInvalidAmount) {
+			http.Error(w, `{"error":"invalid charge amount"}`, http.StatusBadRequest)
+			return
+		}
 		http.Error(w, `{"error":"failed to record charge"}`, http.StatusInternalServerError)
 		return
 	}
@@ -108,13 +138,17 @@ func (h *BillingHandler) OpenCashShift(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
 		return
 	}
+	if payload.OpeningAmount < 0 {
+		http.Error(w, `{"error":"opening_amount must be non-negative"}`, http.StatusBadRequest)
+		return
+	}
 
 	userUUID, err := uuid.Parse(payload.UserID)
 	if err != nil {
-		userUUID = uuid.New() // Fallback user
+		userUUID = uuid.New()
 	}
 
-	shift, err := h.billingRepo.OpenShift(r.Context(), userUUID, payload.OpeningAmount, payload.Notes)
+	shift, err := h.billingRepo.OpenShift(r.Context(), userUUID, stay.RoundCurrency(payload.OpeningAmount), payload.Notes)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -141,9 +175,17 @@ func (h *BillingHandler) CloseCashShift(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
 		return
 	}
+	if payload.ActualAmount < 0 {
+		http.Error(w, `{"error":"actual_amount must be non-negative"}`, http.StatusBadRequest)
+		return
+	}
 
-	shift, err := h.billingRepo.CloseShift(r.Context(), shiftID, payload.ActualAmount, payload.Notes)
+	shift, err := h.billingRepo.CloseShift(r.Context(), shiftID, stay.RoundCurrency(payload.ActualAmount), payload.Notes)
 	if err != nil {
+		if errors.Is(err, billing.ErrShiftAlreadyClosed) {
+			http.Error(w, `{"error":"cash shift is already closed"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}

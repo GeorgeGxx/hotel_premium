@@ -2,6 +2,7 @@ package stay
 
 import (
 	"errors"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,13 +27,25 @@ const (
 )
 
 var (
-	ErrInvalidNights       = errors.New("total nights must be at least 1")
-	ErrInvalidNightlyRate  = errors.New("nightly rate must be greater than zero")
-	ErrStayAlreadyFinished = errors.New("stay is already checked out or cancelled")
-	ErrInvalidDateRange    = errors.New("check-out date must be after check-in date")
-	ErrStayNotFound        = errors.New("stay record not found")
-	ErrRoomAlreadyBooked   = errors.New("room is already booked for the selected period")
+	ErrInvalidNights          = errors.New("total nights must be at least 1")
+	ErrInvalidNightlyRate     = errors.New("nightly rate must be greater than zero")
+	ErrStayAlreadyFinished    = errors.New("stay is already checked out or cancelled")
+	ErrInvalidDateRange       = errors.New("check-out date must be after check-in date")
+	ErrStayNotFound           = errors.New("stay record not found")
+	ErrRoomAlreadyBooked      = errors.New("room is already booked for the selected period")
+	ErrOutstandingBalance     = errors.New("cannot check out stay with outstanding unpaid folio balance")
+	ErrRoomNotReadyForCheckIn = errors.New("room is not available for immediate check-in")
 )
+
+// RoundCurrency rounds a monetary float64 value to exact integer cents (2 decimal places)
+func RoundCurrency(amount float64) float64 {
+	return math.Round(amount*100) / 100
+}
+
+// ToCents converts a USD float64 amount to integer cents for exact comparison
+func ToCents(amount float64) int64 {
+	return int64(math.Round(amount * 100))
+}
 
 type Stay struct {
 	ID                 uuid.UUID     `json:"id"`
@@ -102,11 +115,14 @@ func NewReservation(input CreateStayInput) (*Stay, error) {
 		return nil, ErrInvalidDateRange
 	}
 
-	total := float64(input.TotalNights) * input.NightlyRate
+	rate := RoundCurrency(input.NightlyRate)
+	deposit := RoundCurrency(input.DepositAmount)
+	total := RoundCurrency(float64(input.TotalNights) * rate)
+
 	pStatus := PaymentPending
-	if input.DepositAmount >= total {
+	if ToCents(deposit) >= ToCents(total) {
 		pStatus = PaymentPaid
-	} else if input.DepositAmount > 0 {
+	} else if ToCents(deposit) > 0 {
 		pStatus = PaymentPartial
 	}
 
@@ -124,9 +140,9 @@ func NewReservation(input CreateStayInput) (*Stay, error) {
 		CheckInDate:        input.CheckInDate,
 		CheckOutDate:       input.CheckOutDate,
 		Status:             initStatus,
-		NightlyRate:        input.NightlyRate,
+		NightlyRate:        rate,
 		TotalNights:        input.TotalNights,
-		DepositAmount:      input.DepositAmount,
+		DepositAmount:      deposit,
 		TotalAmount:        total,
 		PaymentStatus:      pStatus,
 		Notes:              input.Notes,
@@ -151,11 +167,13 @@ func NewCheckIn(
 		return nil, ErrInvalidNightlyRate
 	}
 
-	total := float64(nights) * nightlyRate
+	rate := RoundCurrency(nightlyRate)
+	dep := RoundCurrency(deposit)
+	total := RoundCurrency(float64(nights) * rate)
 	pStatus := PaymentPending
-	if deposit >= total {
+	if ToCents(dep) >= ToCents(total) {
 		pStatus = PaymentPaid
-	} else if deposit > 0 {
+	} else if ToCents(dep) > 0 {
 		pStatus = PaymentPartial
 	}
 
@@ -169,9 +187,9 @@ func NewCheckIn(
 		CheckInDate:        checkIn,
 		CheckOutDate:       checkOut,
 		Status:             StatusActive,
-		NightlyRate:        nightlyRate,
+		NightlyRate:        rate,
 		TotalNights:        nights,
-		DepositAmount:      deposit,
+		DepositAmount:      dep,
 		TotalAmount:        total,
 		PaymentStatus:      pStatus,
 		Notes:              notes,
@@ -192,6 +210,9 @@ func (s *Stay) Cancel() error {
 func (s *Stay) CheckOut() error {
 	if s.Status != StatusActive && s.Status != StatusReserved {
 		return ErrStayAlreadyFinished
+	}
+	if s.PaymentStatus != PaymentPaid && ToCents(s.DepositAmount) < ToCents(s.TotalAmount) {
+		return ErrOutstandingBalance
 	}
 	s.Status = StatusCheckedOut
 	s.UpdatedAt = time.Now().UTC()

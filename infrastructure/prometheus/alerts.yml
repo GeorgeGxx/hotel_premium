@@ -34,7 +34,7 @@ groups:
           summary: "High Kafka consumer lag on group {{ $labels.consumergroup }}"
           description: "Kafka consumer group {{ $labels.consumergroup }} has lag > 50 messages on topic {{ $labels.topic }}."
 
-      # 3b. Apache Kafka 8.3.2 Dead Letter Queue (DLQ) Alert
+      # 4. Apache Kafka 8.3.2 Dead Letter Queue (DLQ) Alert
       - alert: KafkaDLQMessagesDetected
         expr: increase(kafka_messages_dlq_total[5m]) > 0
         for: 0m
@@ -45,7 +45,40 @@ groups:
           summary: "Poison-pill message routed to Kafka DLQ ({{ $labels.dlq_topic }})"
           description: "Unrecoverable message detected on {{ $labels.original_topic }} and routed to {{ $labels.dlq_topic }} (reason: {{ $labels.reason }})."
 
-      # 4. HashiCorp Vault Availability Alert
+      # 5. Transactional Outbox Backlog Alert
+      - alert: TransactionalOutboxBacklog
+        expr: hotel_outbox_pending_events > 25
+        for: 2m
+        labels:
+          severity: warning
+          tier: messaging
+        annotations:
+          summary: "Transactional Outbox pending events backlog is growing"
+          description: "More than 25 events have remained in PENDING state in outbox_events for over 2 minutes."
+
+      # 6. High 5xx Error Rate (SLO Fast Burn Alert)
+      - alert: HotelHighErrorRateBurn
+        expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)) > 0.02
+        for: 2m
+        labels:
+          severity: critical
+          tier: application
+        annotations:
+          summary: "HTTP 5xx error rate exceeds 2% SLO threshold"
+          description: "Platform-wide 5xx error ratio has exceeded 2% over the last 5 minutes."
+
+      # 7. High P95 Request Latency Alert
+      - alert: HotelHighP95Latency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path)) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          tier: application
+        annotations:
+          summary: "High P95 HTTP latency on {{ $labels.path }}"
+          description: "95th percentile HTTP request duration on {{ $labels.path }} exceeds 500ms."
+
+      # 8. HashiCorp Vault Availability Alert
       - alert: VaultInstanceDown
         expr: up{job="vault"} == 0
         for: 30s
@@ -56,7 +89,7 @@ groups:
           summary: "HashiCorp Vault instance is unreachable"
           description: "HashiCorp Vault on {{ $labels.instance }} is down or sealed."
 
-      # 5. Kong Upstream Circuit Breaker / Health Alert
+      # 9. Kong Upstream Circuit Breaker / Health Alert
       - alert: KongUpstreamTargetUnhealthy
         expr: kong_upstream_target_health{state="unhealthy"} > 0
         for: 15s
@@ -67,7 +100,7 @@ groups:
           summary: "Kong upstream target {{ $labels.target }} is UNHEALTHY"
           description: "Kong circuit breaker marked target {{ $labels.target }} in upstream {{ $labels.upstream }} as unhealthy."
 
-      # 6. Database Connection Saturation Alert
+      # 10. Database Connection Saturation Alert
       - alert: PostgresConnectionSaturation
         expr: (sum(pg_stat_database_numbackends) / 100) * 100 > 80
         for: 2m

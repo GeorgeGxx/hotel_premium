@@ -52,7 +52,7 @@ metadata:
   namespace: dev
 spec:
   mtls:
-    mode: PERMISSIVE
+    mode: STRICT
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -86,6 +86,17 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -97,6 +108,17 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -108,6 +130,17 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -119,6 +152,17 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 50
+      http:
+        http1MaxPendingRequests: 25
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
@@ -130,6 +174,17 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -157,9 +212,9 @@ spec:
     - to:
         - operation:
             ports: ["80", "5173"]
-    # Allow Prometheus and monitoring tools to scrape metrics & health endpoints
+    # Allow Prometheus and monitoring tools to scrape metrics & health/readiness endpoints
     - to:
         - operation:
             methods: ["GET"]
-            paths: ["/metrics*", "/api/v1/health*", "/ready*", "/status*", "/live*"]
-            ports: ["8001", "8081", "8082", "8083", "8084", "5173"]
+            paths: ["/metrics*", "/api/v1/health*", "/api/v1/ready*", "/ready*", "/healthz*", "/readyz*", "/status*", "/live*"]
+            ports: ["8001", "8100", "8081", "8082", "8083", "8084", "5173"]

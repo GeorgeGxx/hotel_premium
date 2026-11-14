@@ -15,20 +15,132 @@ metadata:
 data:
   kong.yaml: |
     _format_version: "3.0"
+    upstreams:
+      - name: room-upstream
+        algorithm: round-robin
+        healthchecks:
+          active:
+            type: http
+            http_path: /api/v1/ready
+            healthy:
+              interval: 5
+              http_statuses: [200]
+              successes: 2
+            unhealthy:
+              interval: 2
+              http_statuses: [429, 500, 503]
+              http_failures: 3
+              timeouts: 3
+          passive:
+            type: http
+            healthy:
+              http_statuses: [200, 201, 204]
+              successes: 3
+            unhealthy:
+              http_statuses: [500, 502, 503]
+              http_failures: 3
+        targets:
+          - target: room-service.dev.svc.cluster.local:8081
+            weight: 100
+      - name: stay-upstream
+        algorithm: round-robin
+        healthchecks:
+          active:
+            type: http
+            http_path: /api/v1/ready
+            healthy:
+              interval: 5
+              http_statuses: [200]
+              successes: 2
+            unhealthy:
+              interval: 2
+              http_statuses: [429, 500, 503]
+              http_failures: 3
+              timeouts: 3
+          passive:
+            type: http
+            healthy:
+              http_statuses: [200, 201, 204]
+              successes: 3
+            unhealthy:
+              http_statuses: [500, 502, 503]
+              http_failures: 3
+        targets:
+          - target: stay-service.dev.svc.cluster.local:8082
+            weight: 100
+      - name: billing-upstream
+        algorithm: round-robin
+        healthchecks:
+          active:
+            type: http
+            http_path: /api/v1/ready
+            healthy:
+              interval: 5
+              http_statuses: [200]
+              successes: 2
+            unhealthy:
+              interval: 2
+              http_statuses: [429, 500, 503]
+              http_failures: 3
+              timeouts: 3
+          passive:
+            type: http
+            healthy:
+              http_statuses: [200, 201, 204]
+              successes: 3
+            unhealthy:
+              http_statuses: [500, 502, 503]
+              http_failures: 3
+        targets:
+          - target: billing-service.dev.svc.cluster.local:8083
+            weight: 100
+      - name: notification-upstream
+        algorithm: round-robin
+        healthchecks:
+          active:
+            type: http
+            http_path: /api/v1/ready
+            healthy:
+              interval: 5
+              http_statuses: [200]
+              successes: 2
+            unhealthy:
+              interval: 2
+              http_statuses: [429, 500, 503]
+              http_failures: 3
+              timeouts: 3
+        targets:
+          - target: notification-worker.dev.svc.cluster.local:8084
+            weight: 100
     services:
       - name: room-service
-        url: http://room-service.dev.svc.cluster.local:8081
+        host: room-upstream
+        protocol: http
+        port: 8081
+        path: /
+        connect_timeout: 5000
+        read_timeout: 15000
+        write_timeout: 15000
+        retries: 2
         routes:
           - name: room-routes
             paths:
               - /api/v1/rooms
               - /api/v1/health
+              - /api/v1/ready
             strip_path: false
             protocols:
               - http
               - https
       - name: stay-service
-        url: http://stay-service.dev.svc.cluster.local:8082
+        host: stay-upstream
+        protocol: http
+        port: 8082
+        path: /
+        connect_timeout: 5000
+        read_timeout: 3600000
+        write_timeout: 30000
+        retries: 1
         routes:
           - name: stay-routes
             paths:
@@ -39,7 +151,14 @@ data:
               - http
               - https
       - name: billing-service
-        url: http://billing-service.dev.svc.cluster.local:8083
+        host: billing-upstream
+        protocol: http
+        port: 8083
+        path: /
+        connect_timeout: 5000
+        read_timeout: 15000
+        write_timeout: 15000
+        retries: 1
         routes:
           - name: billing-routes
             paths:
@@ -49,17 +168,28 @@ data:
               - http
               - https
       - name: notification-worker
-        url: http://notification-worker.dev.svc.cluster.local:8084
+        host: notification-upstream
+        protocol: http
+        port: 8084
+        path: /
+        connect_timeout: 5000
+        read_timeout: 15000
+        write_timeout: 15000
+        retries: 1
         routes:
           - name: notification-routes
             paths:
               - /api/v1/notifications
+              - /api/v1/dlq
             strip_path: false
             protocols:
               - http
               - https
       - name: frontend-service
         url: http://hotel-frontend.dev.svc.cluster.local:80
+        connect_timeout: 5000
+        read_timeout: 30000
+        write_timeout: 30000
         routes:
           - name: frontend-routes
             paths:
@@ -98,7 +228,11 @@ data:
       - name: cors
         config:
           origins:
-            - "*"
+            - "http://localhost:5173"
+            - "http://localhost:8000"
+            - "http://localhost:80"
+            - "http://localhost"
+            - "https://hotel-premium.internal"
           methods:
             - GET
             - POST
@@ -120,14 +254,26 @@ data:
             - X-Trace-Id
             - X-Correlation-ID
             - traceparent
-          credentials: false
+          credentials: true
           max_age: 3600
+      - name: request-transformer
+        config:
+          remove:
+            headers:
+              - X-Gateway-Secret
       - name: rate-limiting
         config:
+          second: 30
           minute: 120
+          limit_by: ip
           policy: local
           fault_tolerant: true
           hide_client_headers: false
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 10
+          size_unit: megabytes
+          require_content_length: false
       - name: correlation-id
         config:
           header_name: X-Correlation-ID
@@ -140,6 +286,8 @@ data:
               - "X-Content-Type-Options: nosniff"
               - "X-Frame-Options: DENY"
               - "Referrer-Policy: strict-origin-when-cross-origin"
+              - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
+              - "Strict-Transport-Security: max-age=31536000; includeSubDomains"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -166,6 +314,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: kong
           image: kong:3.9.4
@@ -192,13 +342,15 @@ spec:
             - name: KONG_ADMIN_ERROR_LOG
               value: /dev/stderr
             - name: KONG_ADMIN_LISTEN
-              value: 0.0.0.0:8001
+              value: 127.0.0.1:8001
             - name: KONG_ADMIN_GUI_LISTEN
-              value: 0.0.0.0:8002
+              value: 127.0.0.1:8002
             - name: KONG_ADMIN_GUI_URL
               value: http://localhost:8002
             - name: KONG_PROXY_LISTEN
               value: 0.0.0.0:8000
+            - name: KONG_STATUS_LISTEN
+              value: 0.0.0.0:8100
             - name: KONG_TRACING_INSTRUMENTATIONS
               value: "all"
             - name: KONG_TRACING_SAMPLING_RATE
@@ -208,10 +360,8 @@ spec:
           ports:
             - name: proxy
               containerPort: 8000
-            - name: admin
-              containerPort: 8001
-            - name: manager
-              containerPort: 8002
+            - name: status
+              containerPort: 8100
           volumeMounts:
             - name: kong-config
               mountPath: /etc/kong
@@ -226,13 +376,15 @@ spec:
               cpu: 1000m
               memory: 1Gi
           readinessProbe:
-            tcpSocket:
-              port: 8000
+            httpGet:
+              path: /status
+              port: 8100
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
-            tcpSocket:
-              port: 8000
+            httpGet:
+              path: /status
+              port: 8100
             initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
@@ -255,11 +407,8 @@ spec:
     - name: http-proxy
       port: 8000
       targetPort: 8000
-    - name: http-admin
-      port: 8001
-      targetPort: 8001
-    - name: http-manager
-      port: 8002
-      targetPort: 8002
+    - name: status-metrics
+      port: 8100
+      targetPort: 8100
   selector:
     app: kong-gateway

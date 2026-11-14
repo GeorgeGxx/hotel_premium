@@ -23,7 +23,7 @@ var (
 			Namespace: "hotel",
 			Subsystem: "revenue",
 			Name:      "adr_usd",
-			Help:      "Average Daily Rate (ADR) across occupied rooms in USD.",
+			Help:      "Average Daily Rate (ADR) across occupied/valid stays in USD.",
 		},
 	)
 
@@ -57,13 +57,13 @@ var (
 		},
 	)
 
-	// Gross Total Revenue Counter in USD
-	TotalRevenueUSD = promauto.NewCounter(
-		prometheus.CounterOpts{
+	// Gross Total Revenue Gauge in USD
+	TotalRevenueUSD = promauto.NewGauge(
+		prometheus.GaugeOpts{
 			Namespace: "hotel",
 			Subsystem: "revenue",
 			Name:      "total_usd",
-			Help:      "Cumulative gross room revenue in USD.",
+			Help:      "Cumulative gross room and ancillary revenue in USD.",
 		},
 	)
 
@@ -129,13 +129,23 @@ var (
 		},
 	)
 
-	// Monthly Cancellation Rate in Percentage
+	// Reservation Cancellation Rate in Percentage
 	CancellationRate = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: "hotel",
 			Subsystem: "kpi",
 			Name:      "cancellation_rate",
-			Help:      "Monthly reservation cancellation percentage.",
+			Help:      "Reservation cancellation percentage derived from persisted stays.",
+		},
+	)
+
+	// Transactional Outbox Backlog Gauge
+	OutboxPendingEvents = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "hotel",
+			Subsystem: "outbox",
+			Name:      "pending_events",
+			Help:      "Current number of PENDING events in stay_outbox_events awaiting Kafka publication.",
 		},
 	)
 
@@ -184,31 +194,33 @@ var (
 	)
 )
 
+// InitBusinessMetrics initializes metric vectors at 0.0 so Prometheus series exist before the first DB poll.
+// All actual KPI values are computed exclusively from persisted PostgreSQL business tables.
 func InitBusinessMetrics() {
-	// Initialize default realistic business values (overridden dynamically by live PostgreSQL collector)
-	CategoryRevenueUSD.WithLabelValues("Presidential Suite").Set(12500)
-	CategoryRevenueUSD.WithLabelValues("Double Deluxe").Set(8200)
-	CategoryRevenueUSD.WithLabelValues("Single Standard").Set(3100)
+	CategoryRevenueUSD.WithLabelValues("Presidential Suite").Set(0)
+	CategoryRevenueUSD.WithLabelValues("Double Deluxe").Set(0)
+	CategoryRevenueUSD.WithLabelValues("Single Standard").Set(0)
 
-	ADRUSD.Set(145.50)
-	RevPARUSD.Set(112.75)
-	TRevPARUSD.Set(138.40)
-	AncillaryRevenueUSD.Set(4280.00)
-	TotalRevenueUSD.Add(23800)
-	FolioDepositsUSD.Set(16450.00)
-	FolioPendingBalanceUSD.Set(7350.00)
-	OccupancyRatePercent.Set(66.7)
+	ADRUSD.Set(0)
+	RevPARUSD.Set(0)
+	TRevPARUSD.Set(0)
+	AncillaryRevenueUSD.Set(0)
+	TotalRevenueUSD.Set(0)
+	FolioDepositsUSD.Set(0)
+	FolioPendingBalanceUSD.Set(0)
+	OccupancyRatePercent.Set(0)
+	OutboxPendingEvents.Set(0)
 
-	RoomsByStatus.WithLabelValues("AVAILABLE").Set(4)
-	RoomsByStatus.WithLabelValues("OCCUPIED").Set(1)
-	RoomsByStatus.WithLabelValues("DIRTY").Set(1)
+	RoomsByStatus.WithLabelValues("AVAILABLE").Set(0)
+	RoomsByStatus.WithLabelValues("OCCUPIED").Set(0)
+	RoomsByStatus.WithLabelValues("DIRTY").Set(0)
 	RoomsByStatus.WithLabelValues("MAINTENANCE").Set(0)
 
-	StaysByStatus.WithLabelValues("ACTIVE").Set(1)
-	StaysByStatus.WithLabelValues("RESERVED").Set(2)
-	StaysByStatus.WithLabelValues("CHECKED_OUT").Set(4)
+	StaysByStatus.WithLabelValues("ACTIVE").Set(0)
+	StaysByStatus.WithLabelValues("RESERVED").Set(0)
+	StaysByStatus.WithLabelValues("CHECKED_OUT").Set(0)
 	StaysByStatus.WithLabelValues("CANCELLED").Set(0)
 
-	AvgLengthOfStay.Set(2.8)
-	CancellationRate.Set(4.2)
+	AvgLengthOfStay.Set(0)
+	CancellationRate.Set(0)
 }

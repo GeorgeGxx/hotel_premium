@@ -32,15 +32,15 @@ func (RoomCategoryModel) TableName() string {
 }
 
 type RoomModel struct {
-	ID           uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Number       string             `gorm:"type:varchar(20);uniqueIndex;not null" json:"number"`
-	CategoryID   uuid.UUID          `gorm:"type:uuid;not null;index" json:"category_id"`
-	Category     *RoomCategoryModel `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
-	Floor        int                `gorm:"type:int;not null;default:1" json:"floor"`
-	Status       string             `gorm:"type:varchar(30);not null;default:'AVAILABLE'" json:"status"`
-	Notes        string             `gorm:"type:text" json:"notes"`
-	CreatedAt    time.Time          `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
-	UpdatedAt    time.Time          `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	ID         uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Number     string             `gorm:"type:varchar(20);uniqueIndex;not null" json:"number"`
+	CategoryID uuid.UUID          `gorm:"type:uuid;not null;index" json:"category_id"`
+	Category   *RoomCategoryModel `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	Floor      int                `gorm:"type:int;not null;default:1" json:"floor"`
+	Status     string             `gorm:"type:varchar(30);not null;default:'AVAILABLE'" json:"status"`
+	Notes      string             `gorm:"type:text" json:"notes"`
+	CreatedAt  time.Time          `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt  time.Time          `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }
 
 func (RoomModel) TableName() string {
@@ -190,8 +190,8 @@ func NewGormDB(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
 	defer cancel()
 
 	if err := sqlDB.PingContext(pingCtx); err != nil {
-		slog.Warn("GORM PostgreSQL ping failed, operating in decoupled fallback mode", "error", err)
-		return db, nil
+		slog.Warn("GORM PostgreSQL ping failed during startup", "error", err)
+		return db, err
 	}
 
 	slog.Info("Successfully established GORM v1.31.2 connection pool with PostgreSQL")
@@ -199,11 +199,15 @@ func NewGormDB(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// startLiveBusinessMetricsSync periodically queries PostgreSQL 18 to keep USALI Business KPIs synchronized in Prometheus
+// startLiveBusinessMetricsSync periodically queries PostgreSQL to keep USALI Business KPIs synchronized in Prometheus.
+// All metrics are computed strictly from persisted database records with zero synthetic baselines.
 func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 	syncOnce := func() {
 		qCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
+
+		var totalRooms float64
+		var occPercent float64
 
 		// 1. Room status inventory & Occupancy %
 		type statusCount struct {
@@ -214,7 +218,7 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 		if err := db.WithContext(qCtx).Model(&RoomModel{}).
 			Select("status, count(*) as count").
 			Group("status").
-			Scan(&roomCounts).Error; err == nil && len(roomCounts) > 0 {
+			Scan(&roomCounts).Error; err == nil {
 
 			statusMap := map[string]float64{
 				"AVAILABLE":   0,
@@ -222,7 +226,6 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 				"DIRTY":       0,
 				"MAINTENANCE": 0,
 			}
-			var totalRooms float64
 			for _, rc := range roomCounts {
 				key := rc.Status
 				if key == "CLEANING" {
@@ -237,14 +240,22 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 				telemetry.RoomsByStatus.WithLabelValues(st).Set(cnt)
 			}
 			if totalRooms > 0 {
-				occ := (statusMap["OCCUPIED"] / totalRooms) * 100.0
-				telemetry.OccupancyRatePercent.Set(occ)
+				occPercent = (statusMap["OCCUPIED"] / totalRooms) * 100.0
 			}
+			telemetry.OccupancyRatePercent.Set(occPercent)
 		}
 
-		// 2. Stays lifecycle status, LoS, Cancellation Rate, Deposits & Pending Balance
+		// 2. Ancillary POS & Incidental Revenue (excluding initial stay deposit ledger records)
+		var ancillaryTotal float64
+		_ = db.WithContext(qCtx).Model(&StayChargeModel{}).
+			Where("description NOT LIKE 'Initial Stay Deposit%'").
+			Select("COALESCE(SUM(unit_price * quantity), 0)").
+			Scan(&ancillaryTotal).Error
+		telemetry.AncillaryRevenueUSD.Set(ancillaryTotal)
+
+		// 3. Stays lifecycle status, LoS, Cancellation Rate, Deposits, Pending Balance, ADR, RevPAR & TRevPAR
 		var stays []StayModel
-		if err := db.WithContext(qCtx).Preload("Room.Category").Find(&stays).Error; err == nil && len(stays) > 0 {
+		if err := db.WithContext(qCtx).Preload("Room.Category").Find(&stays).Error; err == nil {
 			stayStatusMap := map[string]float64{
 				"ACTIVE":      0,
 				"RESERVED":    0,
@@ -254,12 +265,13 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 			var totalNights float64
 			var validStays float64
 			var totalRate float64
+			var totalRoomRevenue float64
 			var totalDeposits float64
 			var totalPending float64
 			catRev := map[string]float64{
-				"Presidential Suite": 12500,
-				"Double Deluxe":      8200,
-				"Single Standard":    3100,
+				"Presidential Suite": 0,
+				"Double Deluxe":      0,
+				"Single Standard":    0,
 			}
 
 			for _, s := range stays {
@@ -268,6 +280,7 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 					validStays++
 					totalNights += float64(s.TotalNights)
 					totalRate += s.NightlyRate
+					totalRoomRevenue += s.TotalAmount
 					totalDeposits += s.DepositAmount
 					rem := s.TotalAmount - s.DepositAmount
 					if rem > 0 && s.PaymentStatus != "PAID" {
@@ -285,31 +298,45 @@ func startLiveBusinessMetricsSync(ctx context.Context, db *gorm.DB) {
 			for cat, rev := range catRev {
 				telemetry.CategoryRevenueUSD.WithLabelValues(cat).Set(rev)
 			}
+
+			var adr float64
 			if validStays > 0 {
-				adr := totalRate / validStays
-				telemetry.ADRUSD.Set(adr)
+				adr = totalRate / validStays
 				telemetry.AvgLengthOfStay.Set(totalNights / validStays)
+			} else {
+				telemetry.AvgLengthOfStay.Set(0)
 			}
+			telemetry.ADRUSD.Set(adr)
+
 			if len(stays) > 0 {
 				cancRate := (stayStatusMap["CANCELLED"] / float64(len(stays))) * 100.0
-				if cancRate == 0 {
-					cancRate = 4.2 // baseline monthly historical rate when 0 in current window
-				}
 				telemetry.CancellationRate.Set(cancRate)
+			} else {
+				telemetry.CancellationRate.Set(0)
 			}
-			if totalDeposits > 0 {
-				telemetry.FolioDepositsUSD.Set(totalDeposits)
-			}
+
+			telemetry.FolioDepositsUSD.Set(totalDeposits)
 			telemetry.FolioPendingBalanceUSD.Set(totalPending)
+			telemetry.TotalRevenueUSD.Set(totalRoomRevenue + ancillaryTotal)
+
+			if totalRooms > 0 {
+				revpar := adr * (occPercent / 100.0)
+				trevpar := (totalRoomRevenue + ancillaryTotal) / totalRooms
+				telemetry.RevPARUSD.Set(revpar)
+				telemetry.TRevPARUSD.Set(trevpar)
+			} else {
+				telemetry.RevPARUSD.Set(0)
+				telemetry.TRevPARUSD.Set(0)
+			}
 		}
 
-		// 3. Ancillary Revenue & RevPAR / TRevPAR
-		var chargesTotal float64
-		_ = db.WithContext(qCtx).Model(&StayChargeModel{}).
-			Select("COALESCE(SUM(unit_price * quantity), 0)").
-			Scan(&chargesTotal).Error
-		ancillary := 4280.00 + chargesTotal
-		telemetry.AncillaryRevenueUSD.Set(ancillary)
+		// 4. Transactional Outbox Backlog
+		var pendingOutbox int64
+		if err := db.WithContext(qCtx).Model(&StayOutboxEventModel{}).
+			Where("status = 'PENDING'").
+			Count(&pendingOutbox).Error; err == nil {
+			telemetry.OutboxPendingEvents.Set(float64(pendingOutbox))
+		}
 	}
 
 	syncOnce()

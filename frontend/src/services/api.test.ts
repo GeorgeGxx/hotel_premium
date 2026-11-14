@@ -6,14 +6,18 @@ import {
   updateStay,
   cancelStay,
   checkOutStay,
+  setDemoMockMode,
+  ApiError,
 } from './api';
+import { generatePkceChallenge, decodeUserFromToken } from './auth';
 
-describe('Hotel Premium API Client Unit Tests', () => {
+describe('Hotel Premium API Client & OIDC Auth Unit Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setDemoMockMode(true);
   });
 
-  it('fetchRooms should return an array of rooms with luxury attributes', async () => {
+  it('fetchRooms should return an array of rooms with luxury attributes in demo mode', async () => {
     const rooms = await fetchRooms();
     expect(Array.isArray(rooms)).toBe(true);
     expect(rooms.length).toBeGreaterThan(0);
@@ -23,7 +27,30 @@ describe('Hotel Premium API Client Unit Tests', () => {
     expect(room101?.base_price).toBeGreaterThan(0);
   });
 
-  it('fetchStays should return array of active reservations', async () => {
+  it('fetchRooms should NOT fall back to mock data when demo mode is disabled (production mode)', async () => {
+    setDemoMockMode(false);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 503,
+      ok: false,
+      json: async () => ({ error: 'Backend database unavailable' }),
+    } as Response);
+
+    await expect(fetchRooms()).rejects.toThrow(ApiError);
+  });
+
+  it('fetchStays should preserve an empty array [] returned by backend without replacing with mock stays', async () => {
+    setDemoMockMode(false);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => [],
+    } as Response);
+
+    const stays = await fetchStays();
+    expect(stays).toEqual([]);
+  });
+
+  it('fetchStays should return array of active reservations in demo fallback mode', async () => {
     const stays = await fetchStays();
     expect(Array.isArray(stays)).toBe(true);
   });
@@ -52,7 +79,7 @@ describe('Hotel Premium API Client Unit Tests', () => {
   });
 
   it('createStay should throw when backend returns 409 Conflict (double booking)', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 409,
       ok: false,
       json: async () => ({ error: 'Room is already booked for this period.' }),
@@ -75,7 +102,7 @@ describe('Hotel Premium API Client Unit Tests', () => {
   });
 
   it('updateStay should update total_amount and stay duration', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 200,
       ok: true,
       json: async () => ({
@@ -102,7 +129,50 @@ describe('Hotel Premium API Client Unit Tests', () => {
     await expect(cancelStay('stay-1')).resolves.toBeUndefined();
   });
 
-  it('checkOutStay should complete cleanly without throwing', async () => {
-    await expect(checkOutStay('stay-1')).resolves.toBeUndefined();
+  it('checkOutStay should forward settlement payload when provided', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => ({ status: 'checked_out' }),
+    } as Response);
+
+    await expect(
+      checkOutStay('stay-1', {
+        deposit_amount: 250.0,
+        payment_status: 'PAID',
+        notes: 'Card settlement',
+      })
+    ).resolves.toBeUndefined();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, options] = fetchSpy.mock.calls[0];
+    expect(options?.method).toBe('POST');
+    expect(JSON.parse(options?.body as string)).toEqual({
+      deposit_amount: 250.0,
+      payment_status: 'PAID',
+      notes: 'Card settlement',
+    });
+  });
+
+  it('generatePkceChallenge should produce valid RFC 7636 verifier and S256 challenge', async () => {
+    const { verifier, challenge } = await generatePkceChallenge();
+    expect(verifier.length).toBeGreaterThanOrEqual(43);
+    expect(challenge.length).toBeGreaterThanOrEqual(43);
+    expect(challenge).not.toBe(verifier);
+  });
+
+  it('decodeUserFromToken should extract Keycloak realm_access roles accurately', () => {
+    const payload = btoa(
+      JSON.stringify({
+        preferred_username: 'elena_admin',
+        name: 'Elena Vance',
+        email: 'elena@hotelpremium.com',
+        realm_access: { roles: ['USER', 'ADMIN'] },
+      })
+    );
+    const fakeJwt = `eyJhbGciOiJSUzI1NiJ9.${payload}.sig`;
+    const user = decodeUserFromToken(fakeJwt);
+    expect(user?.username).toBe('elena_admin');
+    expect(user?.role).toBe('ADMIN');
   });
 });
