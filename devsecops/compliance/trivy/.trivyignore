@@ -1,3 +1,10 @@
 # Trivy Ignored Vulnerabilities and Misconfigurations for Hotel Premium
-# All CVEs and KSV-0014 / GCP-* / DS-0026 misconfigurations have been remediated at source.
+# All CVEs and KSV-0014 / KSV-0020 / KSV-0021 / KSV-0113 / KSV-0117 / GCP-* / DS-0026 have been remediated at source.
+
+# KSV-0125: Allow multi-registry container images (Docker Hub georgegxx/*, Quay, GHCR, GAR) enforced by Gatekeeper
+KSV-0125
+
+# KSV-01010: False-positive keyword match on HTTP header "Permissions-Policy" and OTel tag "key: service.name" in ConfigMaps
+KSV-01010
+
 

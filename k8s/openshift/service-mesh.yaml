@@ -12,6 +12,7 @@ metadata:
     platform: openshift
 spec:
   members:
+    - hotel-premium
     - dev
     - data
     - auth

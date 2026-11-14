@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { RoomMatrix } from './RoomMatrix';
 import { Room } from '../types/hotel';
 
@@ -143,8 +143,8 @@ describe('RoomMatrix Component (Frontend TDD)', () => {
     expect(handleCleaned).toHaveBeenCalledWith(mockRooms[2]);
   });
 
-  it('opens operational status modal and triggers onUpdateStatus to MAINTENANCE', () => {
-    const handleUpdateStatus = vi.fn();
+  it('opens operational status modal and triggers onUpdateStatus to MAINTENANCE', async () => {
+    const handleUpdateStatus = vi.fn().mockResolvedValue(undefined);
     render(
       <RoomMatrix
         rooms={mockRooms}
@@ -171,7 +171,10 @@ describe('RoomMatrix Component (Frontend TDD)', () => {
     const confirmBtn = screen.getByRole('button', { name: /Confirm Status Change/i });
     fireEvent.click(confirmBtn);
 
-    expect(handleUpdateStatus).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(handleUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Change Suite Status')).not.toBeInTheDocument();
+    });
     expect(handleUpdateStatus).toHaveBeenCalledWith(
       mockRooms[0],
       'MAINTENANCE',

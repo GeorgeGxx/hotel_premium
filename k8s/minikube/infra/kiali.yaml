@@ -138,8 +138,6 @@ data:
     kiali_feature_flags:
       certificates_information_indicators:
         enabled: true
-    login_token:
-      signing_key: "kiali-session-signing-key-32chars"
 ---
 apiVersion: v1
 kind: Secret
@@ -188,6 +186,7 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 10001
+            runAsGroup: 10001
             capabilities:
               drop:
                 - ALL

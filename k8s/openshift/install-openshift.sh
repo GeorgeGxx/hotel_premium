@@ -26,8 +26,9 @@ helm upgrade --install hotel-premium ./k8s/helm/hotel-premium \
   --wait \
   --timeout 300s
 
-echo "=== [4/5] Exposing Frontend via OpenShift Edge Route ==="
+echo "=== [4/5] Exposing Frontend via OpenShift Edge Route & Service Mesh Member Roll ==="
 oc apply -f ./k8s/openshift/routes.yaml -n "${NAMESPACE_APP}"
+oc apply -f ./k8s/openshift/service-mesh.yaml || true
 
 echo "=== [5/5] Deployment Succeeded ==="
 FRONTEND_ROUTE=$(oc get route hotel-frontend -n "${NAMESPACE_APP}" -o jsonpath='{.spec.host}' 2>/dev/null || echo "Pending")

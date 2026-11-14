@@ -260,7 +260,7 @@ data:
         config:
           remove:
             headers:
-              - X-Gateway-Secret
+              - X-Internal-Forwarded
       - name: rate-limiting
         config:
           second: 30
@@ -312,8 +312,9 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -321,7 +322,8 @@ spec:
           image: kong:3.9.4
           securityContext:
             runAsNonRoot: true
-            runAsUser: 1000
+            runAsUser: 10001
+            runAsGroup: 10001
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:

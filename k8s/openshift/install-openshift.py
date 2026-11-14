@@ -110,6 +110,7 @@ def main() -> None:
     chart_dir = repo_root / "k8s" / "helm" / "hotel-premium"
     values_file = chart_dir / "values-openshift.yaml"
     scc_file = repo_root / "k8s" / "openshift" / "scc-bindings.yaml"
+    mesh_file = repo_root / "k8s" / "openshift" / "service-mesh.yaml"
     routes_file = repo_root / "k8s" / "openshift" / "routes.yaml"
 
     total_steps = 5
@@ -175,6 +176,8 @@ def main() -> None:
     if not args.dry_run:
         if routes_file.exists():
             run_command([oc_cmd, "apply", "-f", str(routes_file), "-n", args.namespace], check=False)
+        if mesh_file.exists():
+            run_command([oc_cmd, "apply", "-f", str(mesh_file)], check=False)
 
         time.sleep(2)
         route_res = run_command(

@@ -28,3 +28,17 @@ pdb:
 
 networkPolicy:
   enabled: true
+
+istio:
+  enabled: true
+  mtls:
+    mode: STRICT
+  canary:
+    enabled: false
+    stableWeight: 100
+    canaryWeight: 0
+
+kong:
+  enabled: true
+  image: kong:3.9.4
+  replicas: 2
