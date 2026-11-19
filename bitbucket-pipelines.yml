@@ -38,6 +38,8 @@ definitions:
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.76.0/contrib/install.sh | sh -s -- -b /usr/local/bin v0.76.0
             trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform
             trivy config --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore terraform/modules/gcp
+            trivy fs --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore --scanners vuln --include-dev-deps --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed=false --exit-code 0 .
+            trivy fs --config devsecops/compliance/trivy/trivy.yaml --ignorefile devsecops/compliance/trivy/.trivyignore --scanners vuln --include-dev-deps --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 .
             curl -sSfL https://raw.githubusercontent.com/terraform-linters/tflint/v0.64.0/install_linux.sh | TFLINT_VERSION=v0.64.0 bash
             tflint --init --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
             tflint --config=devsecops/iac/tflint/.tflint.hcl --chdir=terraform/environments/gcp
