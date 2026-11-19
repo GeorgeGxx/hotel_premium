@@ -109,9 +109,13 @@ definitions:
         script:
           - |
             set -euo pipefail
-            if [ -z "${GCP_SA_KEY:-}" ]; then
-              echo "GCP_SA_KEY not configured; skipping live GKE/GAR deploy (dry-run mode)."
+            if [ "${ENABLE_GCP_DEPLOY:-false}" != "true" ]; then
+              echo "ENABLE_GCP_DEPLOY is not true; cloud deployment is disabled."
               exit 0
+            fi
+            if [ -z "${GCP_SA_KEY:-}" ]; then
+              echo "GCP_SA_KEY not configured; refusing live GKE/GAR deploy."
+              exit 1
             fi
             echo "$GCP_SA_KEY" | base64 -d > /tmp/gcp-key.json
             gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
@@ -160,17 +164,15 @@ pipelines:
       - step: *build-sbom-scan
       - step: *policy-supplychain
       - step: *terraform-gcp
+      # Staging and production retain Bitbucket's explicit manual approval.
+      # The deployment script also requires ENABLE_GCP_DEPLOY=true.
       - step:
           <<: *deploy-gke-verify
-          name: '6a. Deploy to GKE Dev & Post-Deploy QA'
-          deployment: dev
-      - step:
-          <<: *deploy-gke-verify
-          name: '6b. Promote to GKE Staging & Post-Deploy QA'
+          name: '6b. Promote to GKE Staging & Post-Deploy QA (manual approval)'
           deployment: staging
           trigger: manual
       - step:
           <<: *deploy-gke-verify
-          name: '6c. Promote to GKE Production & Post-Deploy QA'
+          name: '6c. Promote to GKE Production & Post-Deploy QA (manual approval)'
           deployment: production
           trigger: manual
