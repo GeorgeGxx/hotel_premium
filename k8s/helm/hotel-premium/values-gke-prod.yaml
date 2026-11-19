@@ -1,0 +1,195 @@
+global:
+  environment: production
+  cloudProvider: gcp
+  storageClass: premium-rwo
+
+configMap:
+  data:
+    TRACING_SAMPLING_PROBABILITY: "0.1"
+    HIBERNATE_DDL_AUTO: "validate"
+
+# GCP Artifact Registry High Performance Tier (Production Dual-Dataplane: gke + gke_dp2)
+cosmo-router:
+  graphql:
+    introspection: false
+    playgroundEnabled: false
+  cors:
+    allowedOrigins: []
+  image:
+    repository: "ghcr.io/wundergraph/cosmo/router"
+    tag: "0.362.0"
+  trafficShaping:
+    circuitBreaker:
+      enabled: true
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+
+inventory-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/inventory-service"
+    tag: "1.0.0" # Bootstrap fallback only; CI should override the deployed image with its registry digest.
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1024Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2048Mi"
+
+notification-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/notification-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "512Mi"
+    limits:
+      cpu: "600m"
+      memory: "1024Mi"
+
+orders-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/orders-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1024Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2048Mi"
+
+products-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/products-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1024Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2048Mi"
+
+payments-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/payments-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+fulfillment-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/fulfillment-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "384Mi"
+    limits:
+      cpu: "1000m"
+      memory: "768Mi"
+
+analytics-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/analytics-service"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+frontend:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-prod/frontend"
+    tag: "1.0.0"
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+ingress:
+  enabled: false
+  className: "istio"
+  annotations:
+    kubernetes.io/ingress.class: "istio"
+  hosts: []

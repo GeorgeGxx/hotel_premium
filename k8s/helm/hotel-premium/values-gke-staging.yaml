@@ -1,0 +1,137 @@
+global:
+  environment: staging
+  cloudProvider: gcp
+  storageClass: standard-rwo
+
+configMap:
+  data:
+    TRACING_SAMPLING_PROBABILITY: "0.25"
+    HIBERNATE_DDL_AUTO: "validate"
+
+# GCP Artifact Registry Medium Performance Tier (Staging)
+cosmo-router:
+  image:
+    repository: "ghcr.io/wundergraph/cosmo/router"
+    tag: "0.362.0"
+  trafficShaping:
+    circuitBreaker:
+      enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "384Mi"
+    limits:
+      cpu: "500m"
+      memory: "768Mi"
+
+inventory-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/inventory-service"
+    tag: "1.0.0" # Bootstrap fallback only; CI should override the deployed image with its registry digest.
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1024Mi"
+
+notification-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/notification-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "256Mi"
+    limits:
+      cpu: "300m"
+      memory: "512Mi"
+
+orders-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/orders-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1024Mi"
+
+products-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/products-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1024Mi"
+
+payments-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/payments-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "192Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+fulfillment-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/fulfillment-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+analytics-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/analytics-service"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "192Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+frontend:
+  image:
+    repository: "us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/msa-gcp-staging/frontend"
+    tag: "1.0.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+ingress:
+  enabled: false
+  className: "istio"
+  annotations:
+    kubernetes.io/ingress.class: "istio"
+  hosts: []

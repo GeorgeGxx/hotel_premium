@@ -1,0 +1,61 @@
+services:
+  glitchtip-db:
+    image: postgres:18.7-alpine
+    profiles: [glitchtip]
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?Set GLITCHTIP_DB_PASSWORD in your shell or local env file}
+    command: ["postgres", "-c", "max_locks_per_transaction=512"]
+    volumes:
+      - glitchtip_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  glitchtip:
+    image: glitchtip/glitchtip:7.0.0
+    profiles: [glitchtip]
+    depends_on:
+      glitchtip-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://glitchtip:${GLITCHTIP_DB_PASSWORD:?Set GLITCHTIP_DB_PASSWORD in your shell or local env file}@glitchtip-db:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?Set GLITCHTIP_SECRET_KEY in your shell or local env file}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8092}
+      GLITCHTIP_RETENTION_DAYS: ${GLITCHTIP_RETENTION_DAYS:-30}
+      ENABLE_ORGANIZATION_CREATION: "false"
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_DEFAULT_FROM_EMAIL:-glitchtip@localhost}
+    ports:
+      - "127.0.0.1:${GLITCHTIP_PORT:-8092}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1', 8000), 3); s.close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+
+  hotel-room-service:
+    environment:
+      SENTRY_DSN: ${GLITCHTIP_BACKEND_DSN:-}
+  hotel-stay-service:
+    environment:
+      SENTRY_DSN: ${GLITCHTIP_BACKEND_DSN:-}
+  hotel-billing-service:
+    environment:
+      SENTRY_DSN: ${GLITCHTIP_BACKEND_DSN:-}
+  hotel-notification-worker:
+    environment:
+      SENTRY_DSN: ${GLITCHTIP_BACKEND_DSN:-}
+  hotel-frontend:
+    build:
+      args:
+        VITE_GLITCHTIP_DSN: ${VITE_GLITCHTIP_DSN:-}
+        VITE_APP_RELEASE: ${APP_RELEASE:-local}
+
+volumes:
+  glitchtip_pgdata:

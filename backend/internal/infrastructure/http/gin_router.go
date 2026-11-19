@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/hotelpremium/backend/internal/application/saga"
 	"github.com/hotelpremium/backend/internal/infrastructure/http/handler"
@@ -148,7 +149,7 @@ func NewGinBaseEngine(serviceName string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 
-	engine.Use(gin.Recovery())
+	engine.Use(sentrygin.New(sentrygin.Options{}))
 	engine.Use(GinCORSMiddleware())
 	engine.Use(GinTelemetryMiddleware(serviceName))
 	engine.Use(GinStructuredLogger(serviceName))

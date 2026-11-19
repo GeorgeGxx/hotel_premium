@@ -46,8 +46,10 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	defer telemetry.FlushGlitchTip()
 
 	// 1. OpenTelemetry Tracing Initialization
+	telemetry.InitGlitchTip("notification-worker")
 	shutdownTracer, err := telemetry.InitTracer(ctx, "notification-worker", cfg.OTelCollectorURL)
 	if err == nil && shutdownTracer != nil {
 		defer func() {

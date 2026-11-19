@@ -1,0 +1,67 @@
+global:
+  environment: dev
+  cloudProvider: gcp
+  storageClass: gke-pd-balanced
+
+# GCP Artifact Registry Placeholders (Replace <REGION>-docker.pkg.dev/<PROJECT_ID>/<REPO>)
+inventory-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/inventory-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+notification-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/notification-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+orders-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/orders-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+products-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/products-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+payments-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/payments-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+fulfillment-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/fulfillment-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+analytics-service:
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/analytics-service"
+    tag: "1.0.0"
+  replicaCount: 1
+
+frontend:
+  enabled: false
+  image:
+    repository: "us-central1-docker.pkg.dev/<PROJECT_ID>/microservices/frontend"
+    tag: "1.0.0"
+  replicaCount: 0
+
+# Edge ingress is standardized on the Istio gateway declared in k8s/istio/02-gateway.yaml.
+# Keep Helm values disabled here to avoid creating a second, conflicting ingress path.
+ingress:
+  enabled: false
+  className: "istio"
+  annotations:
+    kubernetes.io/ingress.class: "istio"
+  hosts: []
+
+configMap:
+  data:
+    HIBERNATE_DDL_AUTO: "update"

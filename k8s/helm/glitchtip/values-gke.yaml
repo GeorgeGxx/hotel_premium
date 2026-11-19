@@ -1,0 +1,23 @@
+# GKE private instance. Provision the named secrets through Google Secret Manager/ESO.
+image:
+  tag: 7.0.0
+  pullPolicy: IfNotPresent
+replicaCount: 2
+budget:
+  minAvailable: 1
+ingress:
+  enabled: false
+glitchtip:
+  existingSecret: glitchtip-django-secret
+  domain: https://errors.example.invalid
+  database:
+    existingSecret: glitchtip-database-url
+extraEnvVars:
+  - name: GLITCHTIP_RETENTION_DAYS
+    value: "30"
+  - name: ENABLE_ORGANIZATION_CREATION
+    value: "false"
+valkey:
+  enabled: true
+  auth:
+    enabled: true

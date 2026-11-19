@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This document establishes the baseline security assessment, threat model (STRIDE), and remediation controls for `hotel_premium` across application, API gateway, service mesh, secrets management, Kubernetes runtime, AWS cloud infrastructure, and CI/CD supply chain layers.
+This document establishes the baseline security assessment, threat model (STRIDE), and remediation controls for `hotel_premium` across application, API gateway, service mesh, secrets management, Kubernetes runtime, GCP cloud infrastructure, and CI/CD supply chain layers.
 
 ---
 
@@ -45,10 +45,9 @@ This document establishes the baseline security assessment, threat model (STRIDE
 - **Vault PKI Root & Intermediate CA for Istio (`pki` / `pki_int`)**: Configured via `.\platform-minikube.ps1 vault -VaultAction istio-pki`, minting a 10-year Root CA and 5-year Intermediate CA injected into `istio-system/cacerts` for automatic SPIFFE X.509 mTLS rotation.
 - `ClusterSecretStore` (`infrastructure/eso/cluster-secret-store.yaml`) pointing to `http://vault.vault.svc.cluster.local:8200` with Kubernetes ServiceAccount auth, syncing secrets into namespace `dev` via `ExternalSecret`.
 
-### 3.4 Cloud Infrastructure Security (AWS Terraform 1.16.6)
-- **Encryption at Rest & In Transit**: Customer-managed AWS KMS key with automatic key rotation (`enable_key_rotation = true`) encrypting EKS Kubernetes secrets, RDS PostgreSQL storage, ElastiCache Redis, MSK Kafka, ECR repositories, and CloudWatch/VPC Flow Logs.
-- **Compute Hardening**: EKS Managed Node Groups enforce EC2 Launch Templates with **IMDSv2 required** (`http_tokens = "required"`, `http_put_response_hop_limit = 2`) and encrypted EBS volumes.
-- **Network Segmentation**: RDS, ElastiCache, and MSK reside in isolated private data subnets with Security Groups permitting ingress exclusively from EKS worker node security groups on their respective ports (`5432`, `6379`, `9092`/`9094`) and egress restricted to the VPC CIDR.
+### 3.4 Cloud Infrastructure Security (GCP Terraform)
+- The production target in this repository is GCP/GKE. Terraform modules are under `terraform/modules/gcp/` and cover VPC, workload identity, Cloud SQL, Memorystore, managed Kafka, Cloud DNS, Cloud Armor, GCS, and Cloud Monitoring.
+- Do not apply the AWS-specific controls previously listed here (KMS, EKS/IMDSv2, RDS, ElastiCache, MSK, ECR, or CloudWatch) to this deployment. Verify encryption, private access, IAM scope, audit logging, and backup/restore settings against the deployed GCP resources and current Terraform plan before production approval.
 
 ### 3.5 6-Gate Shift-Left DevSecOps & Software Supply Chain Security (`.\platform-minikube.ps1 security-scan`)
 - **Gate 1 — Gitleaks (`8.30.1`)**: Blocks commits or builds containing hardcoded credentials or private keys (`0` leaks).

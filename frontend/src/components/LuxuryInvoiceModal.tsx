@@ -105,7 +105,7 @@ export const LuxuryInvoiceModal: React.FC<LuxuryInvoiceModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Receipt className="w-5 h-5 text-amber-400" />
             <h2 id="invoice-modal-title" className="text-base font-bold text-white tracking-wide">
-              Official Folio & Guest Statement
+              Official Folio &amp; Guest Statement
             </h2>
             <span
               className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border ${
